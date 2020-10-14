@@ -1843,6 +1843,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
             throw new SchemaOperationException(SchemaOperationException.CODE_CACHE_NOT_FOUND, cacheName);
 
         try {
+            // TODO:
             if (op instanceof SchemaIndexCreateOperation) {
                 SchemaIndexCreateOperation op0 = (SchemaIndexCreateOperation)op;
 

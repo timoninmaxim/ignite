@@ -374,6 +374,7 @@ public class CacheDataTree extends BPlusTree<CacheSearchRow, CacheDataRow> {
             }
         }
 
+        // TODO: but row.hash() is not a perfect hash function..?
         cmp = Integer.compare(io.getHash(pageAddr, idx), row.hash());
 
         if (cmp != 0)

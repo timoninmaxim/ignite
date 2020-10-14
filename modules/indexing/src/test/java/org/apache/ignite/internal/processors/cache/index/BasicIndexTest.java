@@ -183,6 +183,28 @@ public class BasicIndexTest extends AbstractIndexingCommonTest {
         return gridCount;
     }
 
+    @Test
+    public void simple() throws Exception {
+        indexes = Arrays.asList(
+            new QueryIndex("keyStr"),
+            new QueryIndex("keyLong"),
+            new QueryIndex("keyPojo"),
+            new QueryIndex("valStr"),
+            new QueryIndex("valLong"),
+            new QueryIndex("valPojo")
+        );
+
+        inlineSize = 0;
+
+        startGridsMultiThreaded(gridCount());
+
+        populateCache();
+
+        checkAll();
+
+        stopAllGrids();
+    }
+
     /** */
     @Test
     public void testNoIndexesNoPersistence() throws Exception {

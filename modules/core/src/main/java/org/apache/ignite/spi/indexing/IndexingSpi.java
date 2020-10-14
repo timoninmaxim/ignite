@@ -20,6 +20,11 @@ package org.apache.ignite.spi.indexing;
 import java.util.Collection;
 import java.util.Iterator;
 import javax.cache.Cache;
+import org.apache.ignite.cache.query.index.Index;
+import org.apache.ignite.cache.query.index.IndexDefinition;
+import org.apache.ignite.cache.query.index.IndexFactory;
+import org.apache.ignite.internal.processors.cache.GridCacheContext;
+import org.apache.ignite.internal.processors.cache.persistence.CacheDataRow;
 import org.apache.ignite.spi.IgniteSpi;
 import org.apache.ignite.spi.IgniteSpiException;
 import org.jetbrains.annotations.Nullable;
@@ -86,6 +91,15 @@ public interface IndexingSpi extends IgniteSpi {
      */
     public void store(@Nullable String cacheName, Object key, Object val, long expirationTime) throws IgniteSpiException;
 
+    public default void store(GridCacheContext cctx, CacheDataRow newRow, @Nullable CacheDataRow prevRow,
+        boolean prevRowAvailable) throws IgniteSpiException {
+        // No-Op
+    }
+
+    public default Index createIndex(IndexFactory factory, IndexDefinition def) {
+        return null;
+    }
+
     /**
      * Removes index entry by key.
      *
@@ -94,4 +108,8 @@ public interface IndexingSpi extends IgniteSpi {
      * @throws IgniteSpiException If failed.
      */
     public void remove(@Nullable String cacheName, Object key) throws IgniteSpiException;
+
+    public default void remove(String cacheName, @Nullable CacheDataRow prevRow) {
+        // No-op
+    }
 }

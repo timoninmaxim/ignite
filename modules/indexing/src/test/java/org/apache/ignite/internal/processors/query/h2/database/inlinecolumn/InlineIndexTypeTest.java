@@ -70,7 +70,7 @@ import static org.apache.ignite.internal.processors.query.h2.database.inlinecolu
  */
 @WithSystemProperty(key = "h2.serializeJavaObject", value = "false")
 @WithSystemProperty(key = "h2.objectCache", value = "false")
-public class InlineIndexColumnTest extends AbstractIndexingCommonTest {
+public class InlineIndexTypeTest extends AbstractIndexingCommonTest {
     /** */
     private static final int CACHE_ID = 42;
 

@@ -23,11 +23,14 @@ import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.SkipDaemon;
 import org.apache.ignite.internal.managers.GridManagerAdapter;
+import org.apache.ignite.internal.processors.cache.GridCacheContext;
+import org.apache.ignite.internal.processors.cache.persistence.CacheDataRow;
 import org.apache.ignite.internal.util.GridEmptyCloseableIterator;
 import org.apache.ignite.internal.util.GridSpinBusyLock;
 import org.apache.ignite.spi.IgniteSpiCloseableIterator;
 import org.apache.ignite.spi.indexing.IndexingQueryFilter;
 import org.apache.ignite.spi.indexing.IndexingSpi;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Manages cache indexing.
@@ -78,26 +81,25 @@ public class GridIndexingManager extends GridManagerAdapter<IndexingSpi> {
     /**
      * Writes key-value pair to index.
      *
-     * @param cacheName Cache name.
-     * @param key Key.
-     * @param val Value.
-     * @param expirationTime Expiration time or 0 if never expires.
+//     * @param cacheName Cache name.
+//     * @param key Key.
+//     * @param val Value.
+//     * @param expirationTime Expiration time or 0 if never expires.
      * @throws IgniteCheckedException In case of error.
      */
-    public <K, V> void store(final String cacheName, final K key, final V val, long expirationTime)
+    public void store(GridCacheContext cctx, CacheDataRow newRow, @Nullable CacheDataRow prevRow,
+        boolean prevRowAvailable)
         throws IgniteCheckedException {
-        assert key != null;
-        assert val != null;
         assert enabled();
 
         if (!busyLock.enterBusy())
             throw new IllegalStateException("Failed to write to index (grid is stopping).");
 
         try {
-            if (log.isDebugEnabled())
-                log.debug("Storing key to cache query index [key=" + key + ", value=" + val + "]");
+//            if (log.isDebugEnabled())
+//                log.debug("Storing key to cache query index [key=" + key + ", value=" + val + "]");
 
-            getSpi().store(cacheName, key, val, expirationTime);
+            getSpi().store(cctx, newRow, prevRow, prevRowAvailable);
         }
         finally {
             busyLock.leaveBusy();
@@ -106,18 +108,18 @@ public class GridIndexingManager extends GridManagerAdapter<IndexingSpi> {
 
     /**
      * @param cacheName Cache name.
-     * @param key Key.
+//     * @param key Key.
      * @throws IgniteCheckedException Thrown in case of any errors.
      */
-    public void remove(String cacheName, Object key) throws IgniteCheckedException {
-        assert key != null;
+    public void remove(String cacheName, @Nullable CacheDataRow prevRow) throws IgniteCheckedException {
+//        assert key != null;
         assert enabled();
 
         if (!busyLock.enterBusy())
             throw new IllegalStateException("Failed to remove from index (grid is stopping).");
 
         try {
-            getSpi().remove(cacheName, key);
+            getSpi().remove(cacheName, prevRow);
         }
         finally {
             busyLock.leaveBusy();
