@@ -34,9 +34,6 @@ import org.apache.ignite.internal.processors.cache.persistence.tree.io.PageIO;
  */
 // Those IOs are shared between multiple indexes. So can't store schema there.
 public abstract class AbstractInlineInnerIO extends BPlusInnerIO<InlinedIndexSearchRow> {
-    /** Size of indexed keys. */
-    protected final int idxKeysSize;
-
     /**
      * @param type Page type.
      * @param ver Page format version.
@@ -45,7 +42,8 @@ public abstract class AbstractInlineInnerIO extends BPlusInnerIO<InlinedIndexSea
     AbstractInlineInnerIO(short type, int ver, int idxKeysSize) {
         super(type, ver, true, 8 + idxKeysSize);
 
-        this.idxKeysSize = idxKeysSize;
+        // TODO: BPlusIO contains information about itemSize, so we can calculate idxKeySize from it.
+        //          getItemSize() - 8 == idxKeysSize
     }
 
     /**
@@ -67,11 +65,13 @@ public abstract class AbstractInlineInnerIO extends BPlusInnerIO<InlinedIndexSea
     @Override public final void storeByOffset(long pageAddr, int off, InlinedIndexSearchRow row) {
         assert row.link() != 0 : row;
 
+        // TODO: inline size from row?
+
         int fieldOff = 0;
 
         for (int i = 0; i < row.getSchema().length; i++) {
             try {
-                int maxSize = idxKeysSize - fieldOff;
+                int maxSize = inlineSize() - fieldOff;
 
 //                if (size > 0 && size + 1 > maxSize)
 //                    break;  // for
@@ -87,13 +87,15 @@ public abstract class AbstractInlineInnerIO extends BPlusInnerIO<InlinedIndexSea
         }
 
         // Write link after all inlined idx keys.
-        PageUtils.putLong(pageAddr, off + idxKeysSize, row.link());
+        PageUtils.putLong(pageAddr, off + inlineSize(), row.link());
     }
 
     /** {@inheritDoc} */
     @Override public final InlinedIndexSearchRow getLookupRow(BPlusTree<InlinedIndexSearchRow, ?> tree, long pageAddr, int idx)
         throws IgniteCheckedException {
-        long link = PageUtils.getLong(pageAddr, offset(idx) + idxKeysSize);
+        // TODO: inline size got from tree?
+
+        long link = PageUtils.getLong(pageAddr, offset(idx) + inlineSize());
 
         assert link != 0;
 
@@ -107,14 +109,20 @@ public abstract class AbstractInlineInnerIO extends BPlusInnerIO<InlinedIndexSea
     @Override public final void store(long dstPageAddr, int dstIdx, BPlusIO<InlinedIndexSearchRow> srcIo, long srcPageAddr, int srcIdx) {
         int srcOff = srcIo.offset(srcIdx);
 
-        byte[] payload = PageUtils.getBytes(srcPageAddr, srcOff, idxKeysSize);
-        long link = PageUtils.getLong(srcPageAddr, srcOff + idxKeysSize);
+        byte[] payload = PageUtils.getBytes(srcPageAddr, srcOff, inlineSize());
+        long link = PageUtils.getLong(srcPageAddr, srcOff + inlineSize());
 
         assert link != 0;
 
         int dstOff = offset(dstIdx);
 
         PageUtils.putBytes(dstPageAddr, dstOff, payload);
-        PageUtils.putLong(dstPageAddr, dstOff + idxKeysSize, link);
+        PageUtils.putLong(dstPageAddr, dstOff + inlineSize(), link);
+    }
+
+    /** */
+    // TODO: variable provide a cache for this function. So rollback to idxKeySize fields
+    private int inlineSize() {
+        return getItemSize() - 8;
     }
 }

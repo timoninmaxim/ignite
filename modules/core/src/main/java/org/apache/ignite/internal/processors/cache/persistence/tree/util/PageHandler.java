@@ -31,7 +31,7 @@ import org.jetbrains.annotations.Nullable;
 import static java.lang.Boolean.FALSE;
 import static java.lang.Boolean.TRUE;
 
-/**
+/** 
  * Page handler.
  */
 public abstract class PageHandler<X, R> {

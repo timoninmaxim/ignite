@@ -240,6 +240,10 @@ public class H2Tree extends BPlusTree<H2Row, H2Row> {
             // Page is ready - read meta information.
             MetaPageInfo metaInfo = getMetaInfo();
 
+            // TODO: if key column is complex (PK + AffinityColumn)
+            //          before some moment (version=3?) index stores for inline key as object (store hash)
+            //          but in one momemnt starts to unwrap it (decomplex on 2 columns and store values)
+            //          This info how to compare values is set with the flag.
             unwrappedPk = metaInfo.useUnwrappedPk();
 
             cols = (unwrappedPk ? unwrappedCols : wrappedCols).toArray(H2Utils.EMPTY_COLUMNS);
@@ -482,7 +486,7 @@ public class H2Tree extends BPlusTree<H2Row, H2Row> {
 
                 for (int i = 0; i < inlineIdxs.size(); i++) {
                     InlineIndexColumn inlineIdx = inlineIdxs.get(i);
-                    
+
                     Value v2 = row.getValue(inlineIdx.columnIndex());
 
                     if (v2 == null)
@@ -725,7 +729,7 @@ public class H2Tree extends BPlusTree<H2Row, H2Row> {
     /**
      *
      */
-    public static class MetaPageInfo {
+    private static class MetaPageInfo {
         /** */
         int inlineSize;
 

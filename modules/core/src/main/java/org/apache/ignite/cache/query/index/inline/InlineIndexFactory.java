@@ -55,7 +55,8 @@ public class InlineIndexFactory implements IndexFactory {
             rowStore,
             rootPage.pageId().pageId(),
             rootPage.isAllocated(),
-            null);
+            null,
+            -1);  // TODO get configured inline size.
     }
 
     /** */

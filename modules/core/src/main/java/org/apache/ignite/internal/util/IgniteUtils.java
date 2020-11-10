@@ -5486,7 +5486,7 @@ public abstract class IgniteUtils {
      *
      * @param obj Object.
      */
-    public static int hashCode(Object obj) {
+    public static int   hashCode(Object obj) {
         if (obj == null)
             return 0;
 

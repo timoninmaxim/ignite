@@ -116,8 +116,8 @@ public abstract class H2TreeIndexBase extends GridH2IndexBase {
 
     /**
      * @param inlineIdxs Inline index helpers.
-     * @param cfgInlineSize Inline size from cache config.
-     * @param maxInlineSize Max inline size.
+     * @param cfgInlineSize Inline size from index config.
+     * @param maxInlineSize Max inline size from cache config.
      * @return Inline size.
      */
     protected static int computeInlineSize(

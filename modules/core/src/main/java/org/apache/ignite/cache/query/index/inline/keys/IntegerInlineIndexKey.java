@@ -24,7 +24,7 @@ import org.apache.ignite.internal.pagemem.PageUtils;
  * Inline index column implementation for inlining {@link Integer} values.
  */
 public class IntegerInlineIndexKey extends NullableInlineIndexKey<Integer> {
-
+    /** Constructor. */
     public IntegerInlineIndexKey() {
         super(InlineIndexKeyType.INT, (short) 4);
     }
@@ -35,13 +35,19 @@ public class IntegerInlineIndexKey extends NullableInlineIndexKey<Integer> {
         // +1 shift after type
         PageUtils.putInt(pageAddr, off + 1, val);
 
-        // TODO: replace with explicit 4 + 1
-        return keySize() + 1;
+        return 5; // 4 (keySize) + 1 (type byte)
     }
 
     /** {@inheritDoc} */
     @Override protected Integer get0(long pageAddr, int off) {
         // +1 shift after type
         return PageUtils.getInt(pageAddr, off + 1);
+    }
+
+    /** {@inheritDoc} */
+    @Override protected int compare0(long pageAddr, int off, Integer v) {
+        int val1 = PageUtils.getInt(pageAddr, off + 1);
+
+        return Integer.signum(Integer.compare(val1, v));
     }
 }

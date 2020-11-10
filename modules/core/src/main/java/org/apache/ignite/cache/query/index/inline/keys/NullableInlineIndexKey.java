@@ -35,16 +35,16 @@ public abstract class NullableInlineIndexKey<K> implements InlineIndexKey<K> {
     /** */
     private final InlineIndexKeyType type;
 
-    /** */
-    private final short size;
+    /** Actual size of a key without type field. */
+    private final short keySize;
 
     /**
      * @param type Index key type.
-     * @param size Size.
+     * @param keySize Size of value stored in the key.
      */
-    protected NullableInlineIndexKey(InlineIndexKeyType type, short size) {
+    protected NullableInlineIndexKey(InlineIndexKeyType type, short keySize) {
         this.type = type;
-        this.size = size;
+        this.keySize = keySize;
     }
 
     /** {@inheritDoc} */
@@ -54,7 +54,7 @@ public abstract class NullableInlineIndexKey<K> implements InlineIndexKey<K> {
 
     /** {@inheritDoc} */
     @Override public short keySize() {
-        return size;
+        return keySize;
     }
 
     /** {@inheritDoc} */
@@ -64,20 +64,23 @@ public abstract class NullableInlineIndexKey<K> implements InlineIndexKey<K> {
         if (type == InlineIndexKeyType.NULL.getType())
             return 1;
 
-        // TODO: +1, +3?
-        if (size > 0)
-            return size + 1;
+        if (keySize > 0)
+            // For fixed length types.
+            return keySize + 1;
         else
+            // For variable length types.
             return (PageUtils.getShort(pageAddr, off + 1) & 0x7FFF) + 3;
     }
 
     /** {@inheritDoc} */
     @Override public int size() {
+        // TODO: -1
+
         if (type == InlineIndexKeyType.NULL)
             return 1;
 
-        // TODO: +1, +3?
-        return size + 1;
+        // +1 is a type byte.
+        return keySize + 1;
     }
 
     /**
@@ -90,7 +93,8 @@ public abstract class NullableInlineIndexKey<K> implements InlineIndexKey<K> {
      * @return Restored value or {@code null} if value can't be restored.
      */
     @Override public K get(long pageAddr, int off, int maxSize) {
-        if (size > 0 && size + 1 > maxSize)
+        // TODO: +1? Looks like can use size > maxSize?
+        if (keySize > 0 && keySize + 1 > maxSize)
             return null;
 
         if (maxSize < 1)
@@ -113,10 +117,10 @@ public abstract class NullableInlineIndexKey<K> implements InlineIndexKey<K> {
     /** {@inheritDoc} */
     @Override public int put(long pageAddr, int off, K val, int maxSize) {
         // +1 is a length of the type byte.
-        if (size > 0 && size + 1 > maxSize)
+        if (keySize > 0 && keySize + 1 > maxSize)
             return 0;
 
-        if (size < 0 && maxSize < 4) {
+        if (keySize < 0 && maxSize < 4) {
             // Can't fit vartype field.
             PageUtils.putByte(pageAddr, off, (byte) InlineIndexKeyType.UNKNOWN.getType());
             return 0;
@@ -168,4 +172,43 @@ public abstract class NullableInlineIndexKey<K> implements InlineIndexKey<K> {
         int size = PageUtils.getShort(pageAddr, off + 1) & 0x7FFF;
         return PageUtils.getBytes(pageAddr, off + 3, size);
     }
+
+    /** {@inheritDoc} */
+    @Override public int compare(long pageAddr, int off, int maxSize, K v) {
+        int type;
+
+        if ((keySize > 0 && keySize + 1 > maxSize)
+            || maxSize < 1
+            || (type = PageUtils.getByte(pageAddr, off)) == (byte) InlineIndexKeyType.UNKNOWN.getType())
+            return CANT_BE_COMPARE;
+
+//        TODO: NULLs first / last
+//        if (type == InlineIndexKeyType.NULL.getType())
+//            return Integer.signum(comp.compare(ValueNull.INSTANCE, v));
+//        if (v == ValueNull.INSTANCE)
+//            return 1;
+
+        // TODO: or raise exception? (AbstractInlineIndexColumn#ensureType)
+        if (type != this.type.getType())
+            return COMPARE_UNSUPPORTED;
+
+//      TODO: compare different types
+//      type = Value.getHigherOrder(type, v.getType());
+
+        return compare0(pageAddr, off, v);
+    }
+
+    /**
+     * Compares inlined and given value.
+     *
+     * @param pageAddr Page address.
+     * @param off Offset.
+     * @param v Value that should be compare.
+     *
+     * @return -1, 0 or 1 if inlined value less, equal or greater
+     * than given respectively, {@link #CANT_BE_COMPARE} if inlined part
+     * is not enough to compare, or {@link #COMPARE_UNSUPPORTED} if given value
+     * can't be compared with inlined part at all.
+     */
+    protected abstract int compare0(long pageAddr, int off, K v);
 }

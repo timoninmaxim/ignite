@@ -15,17 +15,27 @@ public class InlinedIndexSearchRow {
 
     private final Object[] idxKeys;
 
+    /**
+     * If {@code true} then length of {@link #idxKeys} must be equal to length of {@link #schema}, so use full
+     * schema to search. If {@code false} then it's possible to use only part of schema for search. Only first
+     */
+    private final boolean fullSchemaSearch;
+
     /** Constructor. */
-    public InlinedIndexSearchRow(Object[] idxKeys, InlineIndexKey[] schema) {
-        this.idxKeys = idxKeys;
-        this.schema = schema;
-        this.link = 0;
+    public InlinedIndexSearchRow(Object[] idxKeys, InlineIndexKey[] schema, boolean fullSchemaSearch) {
+        this(idxKeys, schema, fullSchemaSearch, 0);
     }
 
     /** Constructor. */
-    public InlinedIndexSearchRow(Object[] idxKeys, InlineIndexKey[] schema, long link) {
+    public InlinedIndexSearchRow(Object[] idxKeys, InlineIndexKey[] schema) {
+        this(idxKeys, schema, true, 0);
+    }
+
+    /** Constructor. */
+    public InlinedIndexSearchRow(Object[] idxKeys, InlineIndexKey[] schema, boolean fullSchemaSearch, long link) {
         this.idxKeys = idxKeys;
         this.schema = schema;
+        this.fullSchemaSearch = fullSchemaSearch;
         this.link = link;
     }
 
@@ -39,6 +49,10 @@ public class InlinedIndexSearchRow {
 
     public InlineIndexKey[] getSchema() {
         return schema;
+    }
+
+    public boolean isFullSchemaSearch() {
+        return fullSchemaSearch;
     }
 
 //

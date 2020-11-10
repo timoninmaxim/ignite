@@ -40,7 +40,7 @@ public interface InlineIndexKey<K> {
     public short keySize();
 
     /**
-     * TODO
+     * Returns size of inlined key. It contains system fields too (type, length).
      */
     public int size();
 
@@ -69,4 +69,18 @@ public interface InlineIndexKey<K> {
     /**
      */
     @Nullable public K get(long pageAddr, int off, int maxSize);
+
+    /**
+     * Compares inlined and given value. For keys with variable length it's better to compare byte by byte without
+     * getting whole value at once. TODO
+     *
+     * @param pageAddr Page address.
+     * @param off Offset.
+     * @param maxSize Max size.
+     * @param v Value that should be compare.
+     *
+     * @return -1, 0 or 1 if inlined value less, equal or greater
+     * than given respectively, or -2 if inlined part is not enough to compare.
+     */
+    public int compare(long pageAddr, int off, int maxSize, K v);
 }

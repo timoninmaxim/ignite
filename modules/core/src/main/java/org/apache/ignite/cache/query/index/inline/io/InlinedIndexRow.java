@@ -12,37 +12,22 @@ public class InlinedIndexRow extends InlinedIndexSearchRow {
     /** Object that contains info about original IgniteCache row. */
     private final CacheDataRow cacheRow;
 
-//    /** Cache for original IgniteCache key. */
-//    private final Object cacheKey;
-//
-//    /** Cache for original IgniteCache value. */
-//    private final Object cacheVal;
-//
-//    /** Cache values for indexed keys. */
-//    private final Object[] idxKeys;
-
     /** Constructor. */
     public InlinedIndexRow(CacheDataRow row) {
         this(null, null, row);
     }
 
-        /** Constructor. */
+    /** Constructor. */
     public InlinedIndexRow(Object[] idxKeys, InlineIndexKey[] schema, CacheDataRow row) {
-        super(idxKeys, schema, row.link());
+        // TODO: constructor for InlinedIndexRow with link should be completely different
+        super(idxKeys, schema, true, row.link());
 
         cacheRow = row;
-//        idxKeys = new Object[this.def.getIdxFuncs().size()];
-//
-//        CacheObjectContext ctx = def.getContext().cacheObjectContext();
-//
-//        cacheKey = cacheRow.key().value(ctx, false);
-//        cacheVal = cacheRow.value().value(ctx, false);
     }
 
     /**
      * Get indexed value.
      */
-
     public CacheObject value() {
         return cacheRow.value();
     }

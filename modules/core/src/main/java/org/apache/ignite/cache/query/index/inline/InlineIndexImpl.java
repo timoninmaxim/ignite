@@ -75,8 +75,8 @@ public class InlineIndexImpl<CK, CV> implements MultiSortedIndex<CV> {
 
         // TODO: different partitions?
         GridCursor<InlinedIndexRow> cursor = segment().find(
-            new InlinedIndexSearchRow(lowerBounds, def.getSchema()),
-            new InlinedIndexSearchRow(upperBounds, def.getSchema()));
+            new InlinedIndexSearchRow(lowerBounds, def.getSchema(), false),
+            new InlinedIndexSearchRow(upperBounds, def.getSchema(), false));
 
         return new InlineCursor<>(cursor, ctx);
     }
@@ -112,6 +112,8 @@ public class InlineIndexImpl<CK, CV> implements MultiSortedIndex<CV> {
             Object[] newKeys = prepareIdxKey(newRow);
 
             segment().put(new InlinedIndexRow(newKeys, def.getSchema(), newRow));
+
+            // TODO: statistic
 
         } catch (Exception e) {
             throw new RuntimeException(e);
