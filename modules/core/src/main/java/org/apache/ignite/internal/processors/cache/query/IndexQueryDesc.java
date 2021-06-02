@@ -68,10 +68,12 @@ public class IndexQueryDesc implements Serializable {
 
     /** */
     @Override public String toString() {
+        String fields = idxCond == null ? "[]" : idxCond.fields().toString();
+
         return "IndexQuery[" +
             "schema=" + schema + ", " +
             "idxName=" + idxName + ", " +
             "valCls=" + valCls + ", " +
-            "fields=" + idxCond.fields() + "]";
+            "fields=" + fields  + "]";
     }
 }

@@ -20,7 +20,10 @@ package org.apache.ignite.internal.cache.query.index;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.cache.query.IndexQuery;
@@ -29,6 +32,7 @@ import org.apache.ignite.internal.cache.query.RangeIndexCondition;
 import org.apache.ignite.internal.cache.query.index.sorted.IndexKeyDefinition;
 import org.apache.ignite.internal.cache.query.index.sorted.IndexRow;
 import org.apache.ignite.internal.cache.query.index.sorted.IndexRowComparator;
+import org.apache.ignite.internal.cache.query.index.sorted.IndexRowPartialImpl;
 import org.apache.ignite.internal.cache.query.index.sorted.IndexSearchRowImpl;
 import org.apache.ignite.internal.cache.query.index.sorted.InlineIndexRowHandler;
 import org.apache.ignite.internal.cache.query.index.sorted.SortedIndexDefinition;
@@ -40,10 +44,15 @@ import org.apache.ignite.internal.processors.cache.CacheObjectContext;
 import org.apache.ignite.internal.processors.cache.CacheObjectUtils;
 import org.apache.ignite.internal.processors.cache.GridCacheContext;
 import org.apache.ignite.internal.processors.cache.query.IndexQueryDesc;
+import org.apache.ignite.internal.processors.query.GridQueryProperty;
+import org.apache.ignite.internal.processors.query.GridQueryTypeDescriptor;
+import org.apache.ignite.internal.processors.query.QueryTypeDescriptorImpl;
+import org.apache.ignite.internal.processors.query.QueryUtils;
 import org.apache.ignite.internal.util.GridCloseableIteratorAdapter;
 import org.apache.ignite.internal.util.lang.GridCloseableIterator;
 import org.apache.ignite.internal.util.lang.GridCursor;
 import org.apache.ignite.internal.util.typedef.internal.U;
+import org.apache.ignite.lang.IgniteBiPredicate;
 import org.apache.ignite.lang.IgniteBiTuple;
 
 /**
@@ -54,22 +63,34 @@ public class IndexQueryProcessor {
     private final IndexProcessor idxProc;
 
     /** */
+    private final Map<String, ValClassProperties> valClsProps = new ConcurrentHashMap<>();
+
+    /** */
     public IndexQueryProcessor(IndexProcessor idxProc) {
         this.idxProc = idxProc;
     }
 
     /** Run query on local node. */
     public <K, V> GridCloseableIterator<IgniteBiTuple<K, V>> queryLocal(
-        GridCacheContext<K, V> cctx, IndexQueryDesc idxQryDesc, IndexQueryContext qryCtx, boolean keepBinary)
-        throws IgniteCheckedException {
+        GridCacheContext<K, V> cctx, IndexQueryDesc idxQryDesc, IgniteBiPredicate<K, V> predicate,
+        IndexQueryContext qryCtx, boolean keepBinary) throws IgniteCheckedException {
 
-        Index idx = index(cctx, idxQryDesc);
+        Class<?> valCls = idxQryDesc.valCls() != null ? loadValClass(cctx, idxQryDesc.valCls()) : null;
 
-        if (idx == null)
+        Index idx = index(cctx, valCls, idxQryDesc, predicate);
+
+        if (idx == null) {
             throw new IgniteCheckedException(
-                "No index matches index query. Cache=" + cctx.name() + "; Qry=" + idxQryDesc);
+                "No index matches index query. " +
+                    "Cache=" + cctx.name() + "; Qry=" + idxQryDesc + "; predicate=" + (predicate != null));
+        }
 
-        GridCursor<IndexRow> cursor = query(cctx, idx, idxQryDesc.idxCond(), qryCtx);
+        GridCursor<IndexRow> cursor = query(cctx, idx, idxQryDesc.idxCond(), predicate, qryCtx);
+
+        IndexDefinition idxDef = idxProc.indexDefinition(idx.id());
+
+        if (predicate != null)
+            prepareValClsProps(cctx, idxDef, valCls);
 
         // Map IndexRow to Cache Key-Value pair.
         return new GridCloseableIteratorAdapter<IgniteBiTuple<K, V>>() {
@@ -82,12 +103,19 @@ public class IndexQueryProcessor {
                 if (currVal != null)
                     return true;
 
-                if (!cursor.next())
-                    return false;
+                while (cursor.next()) {
+                    currVal = cursor.get();
 
-                currVal = cursor.get();
+                    if (predicate == null)
+                        return true;
 
-                return true;
+                    if (checkPredicate(idxQryDesc.valCls(), predicate, currVal))
+                        return true;
+                }
+
+                currVal = null;
+
+                return false;
             }
 
             /** {@inheritDoc} */
@@ -105,16 +133,34 @@ public class IndexQueryProcessor {
 
                 return new IgniteBiTuple<>(k, v);
             }
+
+            /** */
+            private boolean checkPredicate(String valCls, IgniteBiPredicate<K, V> predicate, IndexRow row) {
+                ValClassProperties props = valClsProps.get(valCls);
+
+                try {
+                    V val = props.value(idxDef, row);
+
+                    // TODO: handle NPE and fallback to unbinary? Or make proxy? Key can apply too, as it inlined.
+                    return predicate.apply(null, val);
+                }
+                catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+                return false;
+            }
         };
     }
 
     /** Get index to run query by specified description. */
-    private Index index(GridCacheContext cctx, IndexQueryDesc idxQryDesc) throws IgniteCheckedException {
-        Class<?> valCls = idxQryDesc.valCls() != null ? loadValClass(cctx, idxQryDesc.valCls()) : null;
-
+    private Index index(GridCacheContext cctx, Class<?> valCls, IndexQueryDesc idxQryDesc, IgniteBiPredicate predicate) {
         String tableName = cctx.kernalContext().query().tableName(cctx.name(), valCls);
 
         if (tableName == null)
+            return null;
+
+        if (predicate != null && idxQryDesc.idxName() == null && idxQryDesc.idxCond() == null)
             return null;
 
         // Find index by specified name.
@@ -193,37 +239,53 @@ public class IndexQueryProcessor {
         }
     }
 
+    /** */
+    private void prepareValClsProps(GridCacheContext cctx, IndexDefinition def, Class<?> valCls) {
+        valClsProps.computeIfAbsent(valCls.getName(), (cls) -> {
+            GridQueryTypeDescriptor desc = cctx.kernalContext().query().typeDescriptor(cctx.name(), valCls.getSimpleName());
+
+            try {
+                return new ValClassProperties(valCls, def, cctx.cacheObjectContext(), (QueryTypeDescriptorImpl) desc);
+            }
+            catch (IgniteCheckedException e) {
+                e.printStackTrace();
+
+                return null;
+            }
+        });
+    }
+
     /** Runs a query and return single cursor or cursor over multiple index segments. */
-    private GridCursor<IndexRow> query(GridCacheContext cctx, Index idx, IndexCondition idxCond, IndexQueryContext qryCtx)
+    private GridCursor<IndexRow> query(GridCacheContext cctx, Index idx, IndexCondition idxCond, IgniteBiPredicate predicate, IndexQueryContext qryCtx)
         throws IgniteCheckedException {
 
         int segmentsCnt = cctx.isPartitioned() ? cctx.config().getQueryParallelism() : 1;
 
         if (segmentsCnt == 1)
-            return query(0, idx, idxCond, qryCtx);
+            return query(0, idx, idxCond, predicate, qryCtx);
 
         final GridCursor<IndexRow>[] segments = new GridCursor[segmentsCnt];
 
         // Actually it just traverse BPlusTree to find boundaries. It's too fast to parallelize this.
         for (int i = 0; i < segmentsCnt; i++)
-            segments[i] = query(i, idx, idxCond, qryCtx);
+            segments[i] = query(i, idx, idxCond, predicate, qryCtx);
 
         return new SegmentedIndexCursor(segments, ((SortedIndexDefinition) idxProc.indexDefinition(idx.id())).rowComparator());
     }
 
     /** Coordinate query conditions. */
-    private GridCursor<IndexRow> query(int segment, Index idx, IndexCondition idxCond, IndexQueryContext qryCtx)
+    private GridCursor<IndexRow> query(int segment, Index idx, IndexCondition idxCond, IgniteBiPredicate predicate, IndexQueryContext qryCtx)
         throws IgniteCheckedException {
 
         if (idxCond instanceof RangeIndexCondition)
-            return treeIndexRange((InlineIndex) idx, (RangeIndexCondition) idxCond, segment, qryCtx);
+            return treeIndexRange((InlineIndex) idx, (RangeIndexCondition) idxCond, segment, predicate, qryCtx);
 
         throw new IllegalStateException("Doesn't support index condition: " + idxCond.getClass().getName());
     }
 
     /** Runs range query over specified segment. */
     private GridCursor<IndexRow> treeIndexRange(InlineIndex idx, RangeIndexCondition cond, int segment,
-        IndexQueryContext qryCtx) throws IgniteCheckedException {
+        IgniteBiPredicate predicate, IndexQueryContext qryCtx) throws IgniteCheckedException {
 
         InlineIndexRowHandler hnd = idx.segment(0).rowHandler();
 
@@ -266,7 +328,7 @@ public class IndexQueryProcessor {
             }
         }
 
-        GridCursor<IndexRow> findRes = idx.find(lower, upper, segment, qryCtx);
+        GridCursor<IndexRow> findRes = idx.find(lower, upper, segment, qryCtx, predicate != null);
 
         boolean checkLower = !cond.lowerInclusive() && cond.lowers() != null;
         boolean checkUpper = !cond.upperInclusive() && cond.uppers() != null;
@@ -399,6 +461,83 @@ public class IndexQueryProcessor {
 
                 U.swap(cursors, i, i + 1);
             }
+        }
+    }
+
+    private static class ValClassProperties {
+        /** */
+        private final Map<String, GridQueryProperty> props = new HashMap<>();
+
+        private final Class<?> valCls;
+
+        /** */
+        public <V> V value(IndexDefinition def, IndexRow row) throws Exception {
+            V o = (V) valCls.getConstructor().newInstance();
+
+            IndexRowPartialImpl r = (IndexRowPartialImpl) row;
+
+            for (int i = 0; i < def.indexKeyDefinitions().size(); i++) {
+                if (r.key(i) == null)
+                    break;
+
+                IndexKeyDefinition d = def.indexKeyDefinitions().get(i);
+
+                if (!props.containsKey(d.name()))
+                    continue;
+
+                props.get(d.name()).setValue(null, o, r.key(i).key());
+            }
+
+            return o;
+        }
+
+        /** */
+        public ValClassProperties(Class<?> valCls, IndexDefinition def, CacheObjectContext coctx, QueryTypeDescriptorImpl desc)
+            throws IgniteCheckedException {
+
+            this.valCls = valCls;
+
+            // TODO: Make wrapper for property to proxy initialization of CacheDataRow?? Or just fallback to unwrap logic.
+            for (IndexKeyDefinition d: def.indexKeyDefinitions()) {
+                String fld = d.name();
+
+                // TODO:
+                if ("_KEY".equals(fld))
+                    continue;
+
+                Class<?> fldCls = desc.fields().get(fld);
+
+                // TODO: need reverted map.
+                for (Map.Entry<String, String> e: desc.aliases().entrySet()) {
+                    if (fld.equals(e.getValue())) {
+                        fld = e.getKey();
+                        break;
+                    }
+                }
+
+                GridQueryProperty prop = classProperty(
+                    fld,
+                    fldCls.getName(),
+                    desc,
+                    coctx);
+
+                props.put(d.name(), prop);
+            }
+        }
+
+        /** */
+        private GridQueryProperty classProperty(String field, String fieldType, QueryTypeDescriptorImpl d, CacheObjectContext coCtx)
+            throws IgniteCheckedException {
+            return QueryUtils.buildProperty(
+                d.keyClass(),
+                valCls,
+                d.keyFieldName(),
+                d.valueFieldName(),
+                field,
+                U.classForName(fieldType, Object.class),
+                d.aliases(),
+                false, // not null TODO: do not need check it, we need just to create object without validation.
+                coCtx);
         }
     }
 }

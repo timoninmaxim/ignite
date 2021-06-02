@@ -85,7 +85,7 @@ public class InlineIndexImpl extends AbstractIndex implements InlineIndex {
 
     /** {@inheritDoc} */
     @Override public GridCursor<IndexRow> find(IndexRow lower, IndexRow upper, int segment) throws IgniteCheckedException {
-        return find(lower, upper, segment, null);
+        return find(lower, upper, segment, null, null);
     }
 
     /** {@inheritDoc} */
@@ -93,13 +93,14 @@ public class InlineIndexImpl extends AbstractIndex implements InlineIndex {
         IndexRow lower,
         IndexRow upper,
         int segment,
-        IndexQueryContext qryCtx
+        IndexQueryContext qryCtx,
+        Object x
     ) throws IgniteCheckedException {
         InlineTreeFilterClosure closure = filterClosure(qryCtx);
 
         // If it is known that only one row will be returned an optimization is employed
         if (isSingleRowLookup(lower, upper)) {
-            IndexRowImpl row = segments[segment].findOne(lower, closure, null);
+            IndexRowImpl row = segments[segment].findOne(lower, closure, x);
 
             if (row == null || isExpired(row))
                 return IndexValueCursor.EMPTY;
@@ -107,7 +108,7 @@ public class InlineIndexImpl extends AbstractIndex implements InlineIndex {
             return new SingleCursor<>(row);
         }
 
-        return segments[segment].find(lower, upper, closure, null);
+        return segments[segment].find(lower, upper, closure, x);
     }
 
     /** {@inheritDoc} */

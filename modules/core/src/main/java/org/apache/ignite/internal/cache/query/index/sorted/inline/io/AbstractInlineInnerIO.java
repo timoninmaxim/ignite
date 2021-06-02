@@ -128,6 +128,20 @@ public abstract class AbstractInlineInnerIO extends BPlusInnerIO<IndexRow> imple
     }
 
     /** {@inheritDoc} */
+    @Override public final IndexRow getLookupRow(BPlusTree<IndexRow, ?> tree, long pageAddr, int idx, Object partial)
+        throws IgniteCheckedException {
+
+        boolean p = partial == null ? null : (Boolean) partial;
+
+        InlineIndexTree t = ((InlineIndexTree) tree);
+
+        long link = PageUtils.getLong(pageAddr, offset(idx) + inlineSize);
+
+        // TODO: invoke getLookupRow instead of createIndexRow
+        return p ? t.partialIndexRow(link, pageAddr, offset(idx)) : t.createIndexRow(link);
+    }
+
+    /** {@inheritDoc} */
     @Override public final void store(long dstPageAddr, int dstIdx, BPlusIO<IndexRow> srcIo, long srcPageAddr, int srcIdx) {
         int srcOff = srcIo.offset(srcIdx);
 

@@ -21,6 +21,7 @@ import javax.cache.Cache;
 import org.apache.ignite.internal.cache.query.IndexCondition;
 import org.apache.ignite.internal.cache.query.RangeIndexCondition;
 import org.apache.ignite.internal.util.typedef.internal.A;
+import org.apache.ignite.lang.IgniteBiPredicate;
 import org.apache.ignite.lang.IgniteExperimental;
 import org.jetbrains.annotations.Nullable;
 
@@ -37,6 +38,13 @@ public class IndexQuery<K, V> extends Query<Cache.Entry<K, V>> {
 
     /** Index condition describes index query clause. */
     private IndexCondition idxCond;
+
+    /** TODO: do we need K? For IndexScan only indexed fields should be used.
+     *      - _KEY is indexed field too, but is it inlined actually?
+     *      - Alternative is IgnitePredicate<V>
+     *      - But why do we need limit predicate with indexed fields only? We can only document that.
+     */
+    private IgniteBiPredicate<K, V> predicate;
 
     /** Cache Value class. Describes a table within a cache that runs a query. */
     private final String valCls;
@@ -231,6 +239,18 @@ public class IndexQuery<K, V> extends Query<Cache.Entry<K, V>> {
         idxCond = cond;
 
         return this;
+    }
+
+    /** */
+    public IndexQuery<K, V> predicate(IgniteBiPredicate<K, V> predicate) {
+        this.predicate = predicate;
+
+        return this;
+    }
+
+    /** */
+    public IgniteBiPredicate<K, V> predicate() {
+        return predicate;
     }
 
     /** Index condition. */

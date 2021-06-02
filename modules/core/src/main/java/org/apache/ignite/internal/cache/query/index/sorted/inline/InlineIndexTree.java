@@ -17,6 +17,7 @@
 
 package org.apache.ignite.internal.cache.query.index.sorted.inline;
 
+import java.util.ArrayList;
 import java.util.List;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
@@ -30,6 +31,7 @@ import org.apache.ignite.internal.cache.query.index.sorted.IndexKeyTypes;
 import org.apache.ignite.internal.cache.query.index.sorted.IndexRow;
 import org.apache.ignite.internal.cache.query.index.sorted.IndexRowCache;
 import org.apache.ignite.internal.cache.query.index.sorted.IndexRowImpl;
+import org.apache.ignite.internal.cache.query.index.sorted.IndexRowPartialImpl;
 import org.apache.ignite.internal.cache.query.index.sorted.InlineIndexRowHandler;
 import org.apache.ignite.internal.cache.query.index.sorted.InlineIndexRowHandlerFactory;
 import org.apache.ignite.internal.cache.query.index.sorted.MetaPageInfo;
@@ -38,6 +40,7 @@ import org.apache.ignite.internal.cache.query.index.sorted.ThreadLocalRowHandler
 import org.apache.ignite.internal.cache.query.index.sorted.inline.io.AbstractInlineInnerIO;
 import org.apache.ignite.internal.cache.query.index.sorted.inline.io.AbstractInlineLeafIO;
 import org.apache.ignite.internal.cache.query.index.sorted.inline.io.MvccIO;
+import org.apache.ignite.internal.cache.query.index.sorted.keys.IndexKey;
 import org.apache.ignite.internal.metric.IoStatisticsHolder;
 import org.apache.ignite.internal.pagemem.FullPageId;
 import org.apache.ignite.internal.pagemem.PageIdAllocator;
@@ -366,6 +369,41 @@ public class InlineIndexTree extends BPlusTree<IndexRow, IndexRow> {
     }
 
     /** Creates an index row for this tree. */
+    public IndexRowImpl partialIndexRow(long link, long pageAddr, int offset) {
+        List<InlineIndexKeyType> keyTypes = rowHandler().inlineIndexKeyTypes();
+
+        int fieldOff = 0;
+
+        List<IndexKey> keys = new ArrayList<>();
+
+        for (int keyIdx = 0; keyIdx < keyTypes.size(); keyIdx++) {
+            try {
+                // Other keys are not inlined. Should compare as rows.
+                if (keyIdx >= keyTypes.size())
+                    break;
+
+                int maxSize = inlineSize - fieldOff;
+
+                InlineIndexKeyType keyType = keyTypes.get(keyIdx);
+
+                // Value can be set up by user in query with different data type.
+                // By default do not compare different types.
+                IndexKey k = keyType.get(pageAddr, offset + fieldOff, maxSize);
+
+                keys.add(k);
+
+                fieldOff += keyType.inlineSize(pageAddr, offset + fieldOff);
+
+            } catch (Exception e) {
+                throw new IgniteException("Failed to store new index row.", e);
+            }
+        }
+
+        // TODO: make implementation of IndexRow with link;
+        return new IndexRowPartialImpl(cacheContext().group(), rowHnd, new CacheDataRowAdapter(link), keys.toArray(new IndexKey[keys.size()]));
+    }
+
+    /** Creates an index row for this tree. */
     public IndexRowImpl createIndexRow(long link) throws IgniteCheckedException {
         IndexRowImpl cachedRow = idxRowCache == null ? null : idxRowCache.get(link);
 
@@ -413,11 +451,15 @@ public class InlineIndexTree extends BPlusTree<IndexRow, IndexRow> {
         return r;
     }
 
-    /** {@inheritDoc} */
-    @Override public IndexRow getRow(BPlusIO<IndexRow> io, long pageAddr, int idx, Object ignore)
+    /**
+     * @param inlineOnly If {@code true} then return partially filled object with inlined columns only,
+     *                   otherwise return full detached row.
+     *                   // TODO: flag or list of columns to return?
+     */
+    @Override public IndexRow getRow(BPlusIO<IndexRow> io, long pageAddr, int idx, Object inlineOnly)
         throws IgniteCheckedException {
 
-        return io.getLookupRow(this, pageAddr, idx);
+        return io.getLookupRow(this, pageAddr, idx, inlineOnly);
     }
 
     /** */

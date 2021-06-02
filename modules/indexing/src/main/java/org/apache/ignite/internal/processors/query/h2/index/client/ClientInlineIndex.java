@@ -71,7 +71,7 @@ public class ClientInlineIndex implements InlineIndex {
 
     /** {@inheritDoc} */
     @Override public GridCursor<IndexRow> find(IndexRow lower, IndexRow upper, int segment,
-        IndexQueryContext qryCtx) throws IgniteCheckedException {
+        IndexQueryContext qryCtx, Object x) throws IgniteCheckedException {
         throw unsupported();
     }
 

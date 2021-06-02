@@ -46,7 +46,7 @@ public interface SortedSegmentedIndex extends Index {
      * @param qryCtx External index qyery context.
      * @return Cursor of found index rows.
      */
-    public GridCursor<IndexRow> find(IndexRow lower, IndexRow upper, int segment, IndexQueryContext qryCtx)
+    public GridCursor<IndexRow> find(IndexRow lower, IndexRow upper, int segment, IndexQueryContext qryCtx, Object x)
         throws IgniteCheckedException;
 
     /**

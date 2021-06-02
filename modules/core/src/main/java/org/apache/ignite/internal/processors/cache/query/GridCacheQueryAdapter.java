@@ -314,17 +314,18 @@ public class GridCacheQueryAdapter<T> implements CacheQuery<T> {
         GridCacheContext<?, ?> cctx,
         GridCacheQueryType type,
         IndexQueryDesc idxQryDesc,
+        IgniteBiPredicate<Object, Object> predicate,
         @Nullable String clsName
     ) {
         this.cctx = cctx;
         this.type = type;
         this.clsName = clsName;
         this.idxQryDesc = idxQryDesc;
+        this.filter = predicate;
 
         log = cctx.logger(getClass());
 
         this.clause = null;
-        this.filter = null;
         this.incMeta = false;
     }
 

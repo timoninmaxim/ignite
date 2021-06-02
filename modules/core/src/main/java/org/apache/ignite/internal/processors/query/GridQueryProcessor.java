@@ -125,6 +125,7 @@ import org.apache.ignite.internal.util.typedef.internal.CU;
 import org.apache.ignite.internal.util.typedef.internal.LT;
 import org.apache.ignite.internal.util.typedef.internal.SB;
 import org.apache.ignite.internal.util.typedef.internal.U;
+import org.apache.ignite.lang.IgniteBiPredicate;
 import org.apache.ignite.lang.IgniteBiTuple;
 import org.apache.ignite.lang.IgniteFuture;
 import org.apache.ignite.lang.IgniteInClosure;
@@ -3345,7 +3346,8 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      * @throws IgniteCheckedException If failed.
      */
     public <K, V> GridCloseableIterator<IgniteBiTuple<K, V>> queryIndex(String cacheName, String valCls,
-        final IndexQueryDesc idxQryDesc, final IndexingQueryFilter filters, boolean keepBinary) throws IgniteCheckedException {
+        final IndexQueryDesc idxQryDesc, final IgniteBiPredicate<K, V> predicate,
+        final IndexingQueryFilter filters, boolean keepBinary) throws IgniteCheckedException {
         if (!busyLock.enterBusy())
             throw new IllegalStateException("Failed to execute query (grid is stopping).");
 
@@ -3357,7 +3359,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
                     @Override public GridCloseableIterator<IgniteBiTuple<K, V>> applyx() throws IgniteCheckedException {
                         IndexQueryContext qryCtx = new IndexQueryContext(filters, null);
 
-                        return idxQryPrc.queryLocal(cctx, idxQryDesc, qryCtx, keepBinary);
+                        return idxQryPrc.queryLocal(cctx, idxQryDesc, predicate, qryCtx, keepBinary);
 
                     }
                 }, true);

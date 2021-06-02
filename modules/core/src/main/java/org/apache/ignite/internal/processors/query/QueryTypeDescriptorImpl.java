@@ -546,7 +546,7 @@ public class QueryTypeDescriptorImpl implements GridQueryTypeDescriptor {
      * Sets key field name.
      * @param keyFieldName Key field name.
      */
-    void keyFieldName(String keyFieldName) {
+    public void keyFieldName(String keyFieldName) {
         this.keyFieldName = keyFieldName;
     }
 
@@ -559,7 +559,7 @@ public class QueryTypeDescriptorImpl implements GridQueryTypeDescriptor {
      * Sets value field name.
      * @param valFieldName value field name.
      */
-    void valueFieldName(String valFieldName) {
+    public void valueFieldName(String valFieldName) {
         this.valFieldName = valFieldName;
     }
 
@@ -648,7 +648,7 @@ public class QueryTypeDescriptorImpl implements GridQueryTypeDescriptor {
 
             if (String.class == propVal.getClass() &&
                 ((String)propVal).length() > prop.precision()) {
-                throw new IgniteSQLException("Value for a column '" + prop.name() + "' is too long. " + 
+                throw new IgniteSQLException("Value for a column '" + prop.name() + "' is too long. " +
                     "Maximum length: " + prop.precision() + ", actual length: " + ((CharSequence)propVal).length(),
                     isKey ? TOO_LONG_KEY : TOO_LONG_VALUE);
             }

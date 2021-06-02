@@ -34,7 +34,7 @@ public class IndexRowImpl implements IndexRow {
     private final CacheDataRow cacheRow;
 
     /** Cache for index row keys. To avoid hit underlying cache for every comparation. */
-    private IndexKey[] keyCache;
+    protected IndexKey[] keyCache;
 
     /** Schema of an index. */
     private final InlineIndexRowHandler rowHnd;
