@@ -16,46 +16,61 @@
 """
 This module contains basic ignite test.
 """
-import os
 
-from ducktape.mark.resource import cluster
-from ducktape.tests.test import TestContext
 from ignitetest.gatling.gatling_service import GatlingService
 from ignitetest.services.ignite import IgniteService
+from ignitetest.services.ignite_app import IgniteApplicationService
 from ignitetest.services.utils.ignite_configuration import IgniteConfiguration
+from ignitetest.services.utils.ignite_configuration.discovery import from_ignite_cluster
+from ignitetest.services.utils.ssl.client_connector_configuration import ClientConnectorConfiguration
 from ignitetest.utils import ignite_versions
 from ignitetest.utils.ignite_test import IgniteTest
-from ignitetest.utils.version import DEV_BRANCH, IgniteVersion
+from ignitetest.utils.version import IgniteVersion, V_2_10_0
 
 
-# pylint: disable=W0223
 class GatlingTest(IgniteTest):
     """
     Basic Gatling test.
     """
 
-    # Simulation class parameter.
-    GLOBAL_SIMULATION_CLASS = "gatling_simulation_class"
-
-    # Server nodes count parameter.
-    GLOBAL_SERVER_NODES_COUNT = "server_nodes_count"
-
-    # Gatling nodes count parameter.
-    GLOBAL_GATLING_NODES_COUNT = "gatling_nodes_count"
-
-    @cluster(num_nodes=12)
-    @ignite_versions(str(DEV_BRANCH))
+    @ignite_versions(str(V_2_10_0))
     def gatling_test(self, ignite_version):
-        configuration = IgniteConfiguration(version=IgniteVersion(ignite_version))
+        # Start Ignite cluster.
+        configuration = IgniteConfiguration(
+            version=IgniteVersion(ignite_version),
+            self_monitoring=True,
+            metric_exporter="org.apache.ignite.spi.metric.jmx.JmxMetricExporterSpi",
+            client_connector_configuration=ClientConnectorConfiguration())
 
-        servers = IgniteService(self.test_context, configuration, startup_timeout_sec=180,
-                                num_nodes=self._global_int(self.GLOBAL_SERVER_NODES_COUNT))
+        ignite = IgniteService(self.test_context, configuration, startup_timeout_sec=180, num_nodes=1)
 
-        servers.start()
+        ignite.start()
 
-        gatling = GatlingService(self.test_context, configuration, self._global_param(self.GLOBAL_SIMULATION_CLASS),
-                                 num_nodes=self._global_int(self.GLOBAL_GATLING_NODES_COUNT))
+        # Create cache, fill cache with data.
+        client_configuration = configuration._replace(client_mode=True,
+                                                      discovery_spi=from_ignite_cluster(ignite))
+
+        app = IgniteApplicationService(
+            self.test_context,
+            client_configuration,
+            java_class_name="org.apache.ignite.internal.ducktest.tests.gatling.CacheInitApplication"
+        )
+        app.start()
+        app.await_stopped()
+
+        self.run_gatling(configuration)
+        self.run_gatling(configuration)
+        self.run_gatling(configuration)
+
+        # Stop Ignite cluster.
+        ignite.stop()
+
+    def run_gatling(self, configuration):
+        # Start performance test.
+        gatling = GatlingService(
+            self.test_context,
+            configuration,
+            simulation_class_name="org.apache.ignite.gatling.simulations.QueryComparisonSimulation")
 
         gatling.run()
-
-        servers.stop()
+        gatling.await_stopped()

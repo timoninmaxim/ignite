@@ -286,9 +286,9 @@ docker_run() {
 
     local expose_ports=""
     if [[ -n ${ports_option} ]]; then
-        expose_ports="-P"
+        expose_ports=""
         for expose_port in ${ports_option//,/ }; do
-            expose_ports="${expose_ports} --expose ${expose_port}"
+            expose_ports="${expose_ports} -p ${expose_port}"
         done
     fi
 
@@ -302,10 +302,12 @@ docker_run() {
         --network ducknet ${expose_ports} \
         --memory=${docker_run_memory_limit} \
         --memory-swappiness=1 \
-        --mount type=bind,source="${ignite_dir}",target=/opt/ignite-dev,consistency=delegated \
+        --mount type=bind,source="${ignite_dir}",target=/opt/ignite-dev \
         $DOCKER_OPTIONS \
         --name "${node}" \
         -- "${image_name}"
+
+         #,consistency=delegated \
 }
 
 setup_custom_ducktape() {
@@ -332,7 +334,7 @@ ducker_up() {
             -C|--custom-ducktape) set_once custom_ducktape "${2}" "the custom ducktape directory"; shift 2;;
             -f|--force) force=1; shift;;
             -n|--num-nodes) set_once num_nodes "${2}" "number of nodes"; shift 2;;
-            -e|--expose-ports) set_once expose_ports "${2}" "the ports to expose"; shift 2;;
+            -p|--ports) set_once expose_ports "${2}" "the ports to expose"; shift 2;;
             *) set_once image_name "${1}" "docker image name"; shift;;
         esac
     done
@@ -371,9 +373,13 @@ attempting to start new ones."
     if [[ -n "${custom_ducktape}" ]]; then
         setup_custom_ducktape "${custom_ducktape}" "${image_name}"
     fi
-    for n in $(seq -f %02g 1 ${num_nodes}); do
-        local node="ducker${n}"
-        docker_run "${node}" "${image_name}" "${expose_ports}"
+    for n in $(seq 1 ${num_nodes}); do
+        local sfx=$(printf "%02d" $n)
+
+        local node="ducker${sfx}"
+        local port=$(( expose_ports + n ))
+
+        docker_run "${node}" "${image_name}" "${port}:${expose_ports}"
     done
     mkdir -p "${ducker_dir}/build"
     exec 3<> "${ducker_dir}/build/node_hosts"

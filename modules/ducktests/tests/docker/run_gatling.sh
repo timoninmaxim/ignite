@@ -60,6 +60,7 @@ while [[ $# -ge 1 ]]; do
 done
 
 "$SCRIPT_DIR"/run_tests.sh \
+  --ports 3000 \
   -t "$GATLING_STARTER" \
   -g "gatling_simulation_class=${GATLING_SIMULATION_CLASS}" \
   -g "server_nodes_count=${SERVER_NODES_COUNT}" \
@@ -68,5 +69,5 @@ done
 
 echo "Creating Gatling report."
 
-"$SCRIPT_DIR"/ducker-ignite ssh ducker01 "/opt/ignite-dev/modules/gatling/target/gatling-charts-highcharts-bundle-3.5.1/bin/gatling.sh -ro /opt/ignite-dev/results/latest/GatlingTest/gatling_test/ignite_version=ignite-dev/1" \
+"$SCRIPT_DIR"/ducker-ignite ssh ducker01 "/opt/ignite-dev/modules/gatling/target/gatling-charts-highcharts-bundle-3.5.1/bin/gatling.sh -ro /opt/ignite-dev/results/latest/GatlingTest/gatling_test/ignite_version=ignite-2.10.0/1" \
     || die "Failed to create report."

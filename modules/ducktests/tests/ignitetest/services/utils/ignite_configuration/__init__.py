@@ -64,6 +64,7 @@ class IgniteConfiguration(NamedTuple):
     local_event_listeners: str = None
     include_event_types: str = None
     event_storage_spi: str = None
+    self_monitoring: bool = False
 
     def __prepare_ssl(self, test_globals, shared_root):
         """

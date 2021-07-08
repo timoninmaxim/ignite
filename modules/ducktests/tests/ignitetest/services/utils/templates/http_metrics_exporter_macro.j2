@@ -1,0 +1,74 @@
+{% macro http_metrics_exporter() %}
+
+<bean class="org.apache.ignite.viewer.IgniteHttpMetricsExporterSpi">
+    <property name="port" value="8086"/>
+    <property name="groups">
+        <list>
+            <bean class="org.apache.ignite.viewer.config.RegExpGroup">
+                <property name="context" value="/all"/>
+                <property name="regExp" value=".*"/>
+            </bean>
+            <bean class="org.apache.ignite.viewer.config.RegExpGroup">
+                <property name="context" value="/threadPools"/>
+                <property name="regExp" value="threadPools\..*"/>
+            </bean>
+            <bean class="org.apache.ignite.viewer.config.NamesListGroup">
+                <property name="context" value="/pme"/>
+                <property name="names">
+                    <value>pme</value>
+                </property>
+            </bean>
+            <bean class="org.apache.ignite.viewer.config.NamesListGroup">
+                <property name="context" value="/sql"/>
+                <property name="names">
+                    <value>sql</value>
+                </property>
+            </bean>
+            <bean class="org.apache.ignite.viewer.config.NamesListGroup">
+                <property name="context" value="/cluster"/>
+                <property name="names">
+                    <value>cluster</value>
+                </property>
+            </bean>
+            <bean class="org.apache.ignite.viewer.config.RegExpGroup">
+                <property name="context" value="/io"/>
+                <property name="regExp" value="io\..*"/>
+            </bean>
+            <bean class="org.apache.ignite.viewer.config.NamesListGroup">
+                <property name="context" value="/cacheGroups"/>
+                <property name="names">
+                    <value>cacheGroups</value>
+                </property>
+            </bean>
+            <bean class="org.apache.ignite.viewer.config.RegExpGroup">
+                <property name="context" value="/cache"/>
+                <property name="regExp" value="cache\..*"/>
+            </bean>
+            <bean class="org.apache.ignite.viewer.config.NamesListGroup">
+                <property name="context" value="/ignite"/>
+                <property name="names">
+                    <value>ignite</value>
+                </property>
+            </bean>
+            <bean class="org.apache.ignite.viewer.config.NamesListGroup">
+                <property name="context" value="/sys"/>
+                <property name="names">
+                    <value>sys</value>
+                </property>
+            </bean>
+            <bean class="org.apache.ignite.viewer.config.NamesListGroup">
+                <property name="context" value="/communication"/>
+                <property name="names">
+                    <value>communication</value>
+                </property>
+            </bean>
+            <bean class="org.apache.ignite.viewer.config.NamesListGroup">
+                <property name="context" value="/tx"/>
+                <property name="names">
+                    <value>tx</value>
+                </property>
+            </bean>
+        </list>
+    </property>
+</bean>
+{% endmacro %}

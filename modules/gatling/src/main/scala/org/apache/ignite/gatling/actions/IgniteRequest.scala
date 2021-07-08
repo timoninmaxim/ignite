@@ -26,7 +26,8 @@ import io.gatling.core.session.Expression
 import io.gatling.core.stats.StatsEngine
 import io.gatling.core.structure.ScenarioContext
 import io.gatling.core.util.NameGen
-import org.apache.ignite.Ignite
+import org.apache.ignite.{Ignite, IgniteCache}
+import org.apache.ignite.cache.query.SqlFieldsQuery
 import org.apache.ignite.gatling.protocol.IgniteProtocol
 
 /** */
@@ -42,6 +43,14 @@ case class IgniteCacheRequest(tag: String, cache: String) {
 
     def put(key: Expression[AnyRef], value: Expression[AnyRef]) = CacheRequestActionBuilder(tag, (ignite, ses) => {
         ignite.cache(cache).put(key(ses), value(ses))
+    })
+
+    def query(clause: String) = CacheRequestActionBuilder(tag, (ignite, ses) => {
+        ignite.cache(cache).query(new SqlFieldsQuery(clause)).getAll
+    })
+
+    def apply(func: IgniteCache[AnyRef, AnyRef] => Unit) =  CacheRequestActionBuilder(tag, (ignite, ses) => {
+        func.apply(ignite.cache(cache))
     })
 }
 

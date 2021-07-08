@@ -24,6 +24,7 @@
 {% import 'misc_macro.j2' as misc_utils %}
 {% import 'ssl_params_macro.j2' as ssl_params_util %}
 {% import 'connector_configuration.j2' as connector_configuration_util %}
+{% import 'http_metrics_exporter_macro.j2' as http_metrics_exporter %}
 
 <beans xmlns="http://www.springframework.org/schema/beans"
        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -59,7 +60,12 @@
 
         {% if config.metric_exporter %}
             <property name="metricExporterSpi">
-                <bean class="{{ config.metric_exporter }}"/>
+                <list>
+                    <bean class="{{ config.metric_exporter }}"/>
+                    {% if config.self_monitoring %}
+                        {{ http_metrics_exporter.http_metrics_exporter() }}
+                    {% endif %}
+                </list>
             </property>
         {% endif %}
 
@@ -103,6 +109,13 @@
                         </property>
                         <property name="useIgniteSslContextFactory" value="{{ config.client_connector_configuration.use_ignite_ssl_context_factory }}"/>
                         <property name="sslClientAuth" value="{{ config.client_connector_configuration.ssl_client_auth }}"/>
+                    {% endif %}
+                    {%  if config.self_monitoring %}
+                        <property name="thinClientConfiguration">
+                            <bean class="org.apache.ignite.configuration.ThinClientConfiguration">
+                                <property name="maxActiveComputeTasksPerConnection" value="100"/>
+                            </bean>
+                        </property>
                     {% endif %}
                 </bean>
             </property>

@@ -21,7 +21,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # DuckerUp parameters are specified with env variables
 
 # Num of cotainers that ducktape will prepare for tests
-IGNITE_NUM_CONTAINERS=${IGNITE_NUM_CONTAINERS:-13}
+IGNITE_NUM_CONTAINERS=${IGNITE_NUM_CONTAINERS:-7}
 
 # Image name to run nodes
 JDK_VERSION="${JDK_VERSION:-8}"
@@ -43,6 +43,10 @@ PARAMETERS="{}"
 # - skips ducker-ignite compare step;
 # - sends to duck-ignite scripts.
 FORCE=
+
+###
+# Ports to expose and map to host.
+PORTS=
 
 usage() {
     cat <<EOF
@@ -80,6 +84,10 @@ The options are as follows:
 
 --image
     Set custom docker image to run tests on.
+
+--ports
+    Maps container port on host port. For multiple containers increments host port. For example if port 3000 is specified
+    then host will accept 3001 (for ducker01), 3002 (for ducker02).
 
 EOF
     exit 0
@@ -127,6 +135,7 @@ while [[ $# -ge 1 ]]; do
         --jdk) JDK_VERSION="$2"; shift 2;;
         --image) IMAGE_NAME="$2"; shift 2;;
         -f|--force) FORCE=$1; shift;;
+        --ports) PORTS="$2"; shift 2;;
         *) break;;
     esac
 done
@@ -146,8 +155,14 @@ fi
 
 # Up cluster if nothing is running
 if "$SCRIPT_DIR"/ducker-ignite ssh | grep -q '(none)'; then
+    ports=
+
+    if [[ -n "$PORTS" ]]; then
+      ports="-p $PORTS"
+    fi
+
     # do not quote FORCE as bash recognize "" as input param instead of image name
-    "$SCRIPT_DIR"/ducker-ignite up $FORCE -n "$IGNITE_NUM_CONTAINERS" "$IMAGE_NAME" || die "ducker-ignite up failed"
+    "$SCRIPT_DIR"/ducker-ignite up $FORCE -n "$IGNITE_NUM_CONTAINERS" $ports "$IMAGE_NAME" || die "ducker-ignite up failed"
 fi
 
 DUCKTAPE_OPTIONS="--globals '$GLOBALS'"

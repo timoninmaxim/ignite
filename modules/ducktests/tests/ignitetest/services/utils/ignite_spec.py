@@ -136,7 +136,7 @@ class IgniteSpec(metaclass=ABCMeta):
         """
         Get module path for current spec.
         """
-        if name == "ducktests":
+        if name in ("ducktests", "gatling"):
             return get_module_path(self.__home(str(DEV_BRANCH)), name, DEV_BRANCH.is_dev)
 
         return get_module_path(self.__home(), name, self.service.config.version.is_dev)

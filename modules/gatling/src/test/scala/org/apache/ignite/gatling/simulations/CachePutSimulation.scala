@@ -36,7 +36,7 @@ class CachePutSimulation extends Simulation {
         .exec(ignite("Simple put").cache(cacheName).put("${id}", "${firstname}"))
 
     setUp(scn.inject(
-        constantConcurrentUsers(5000) during 30
+        constantConcurrentUsers(1) during 10
     )).protocols(new IgniteProtocol(serverNode))
 
     after(serverNode.close())
