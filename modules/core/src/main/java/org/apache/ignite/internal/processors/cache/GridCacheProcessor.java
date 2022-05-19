@@ -3115,6 +3115,17 @@ public class GridCacheProcessor extends GridProcessorAdapter {
 
         CacheDiagnosticManager diagnosticMgr = new CacheDiagnosticManager();
 
+        boolean enableConsistentCut = false;
+
+        if (kernalCtx.config().getDataStorageConfiguration().isRecoveryPointEnabled()) {
+            if (!CU.isPersistenceEnabled(kernalCtx.config())) {
+                throw new IgniteCheckedException("PITR can be enabled only for cluster with enabled persistence."
+                    + " Check the DataRegionConfiguration");
+            }
+
+            enableConsistentCut = true;
+        }
+
         return new GridCacheSharedContext(
             kernalCtx,
             tm,
@@ -3136,7 +3147,8 @@ public class GridCacheProcessor extends GridProcessorAdapter {
             storeSesLsnrs,
             mvccCachingMgr,
             deadlockDetectionMgr,
-            diagnosticMgr
+            diagnosticMgr,
+            enableConsistentCut
         );
     }
 

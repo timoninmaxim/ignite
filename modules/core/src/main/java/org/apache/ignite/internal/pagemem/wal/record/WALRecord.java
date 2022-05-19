@@ -276,7 +276,10 @@ public abstract class WALRecord {
         INDEX_ROOT_PAGE_RENAME_RECORD(72, LOGICAL),
 
         /** Partition clearing start. */
-        PARTITION_CLEARING_START_RECORD(73, LOGICAL);
+        PARTITION_CLEARING_START_RECORD(73, LOGICAL),
+
+        /** Partition clearing start. */
+        CONSISTENT_CUT_RECORD(74, LOGICAL);
 
         /** Index for serialization. Should be consistent throughout all versions. */
         private final int idx;
