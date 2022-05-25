@@ -278,7 +278,7 @@ public abstract class WALRecord {
         /** Partition clearing start. */
         PARTITION_CLEARING_START_RECORD(73, LOGICAL),
 
-        /** Partition clearing start. */
+        /** Consistent Cut record. */
         CONSISTENT_CUT_RECORD(74, LOGICAL);
 
         /** Index for serialization. Should be consistent throughout all versions. */
