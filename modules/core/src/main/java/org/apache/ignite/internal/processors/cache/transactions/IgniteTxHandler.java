@@ -233,7 +233,7 @@ public class IgniteTxHandler {
 
                 processConsistentVer(r.lastCutVer());
 
-                if (r.onePhaseCommit())
+                if (ctx.consistentCutMgr() != null && r.onePhaseCommit())
                     ctx.consistentCutMgr().handleRemoteTxCutVersion(r.version(), r.txCutVer(), true);
 
                 processNearTxPrepareResponse(nodeId, r);
@@ -246,7 +246,8 @@ public class IgniteTxHandler {
 
                 processConsistentVer(r.lastCutVer());
 
-                ctx.consistentCutMgr().handleRemoteTxCutVersion(r.version(), r.txCutVer(), false);
+                if (ctx.consistentCutMgr() != null)
+                    ctx.consistentCutMgr().handleRemoteTxCutVersion(r.version(), r.txCutVer(), false);
 
                 processNearTxFinishRequest(nodeId, r);
             }
@@ -274,7 +275,7 @@ public class IgniteTxHandler {
 
                 processConsistentVer(r.lastCutVer());
 
-                if (r.onePhaseCommit())
+                if (ctx.consistentCutMgr() != null && r.onePhaseCommit())
                     ctx.consistentCutMgr().handleRemoteTxCutVersion(r.nearXidVer(), r.txCutVer(), true);
 
                 processDhtTxPrepareResponse(nodeId, r);
@@ -287,7 +288,8 @@ public class IgniteTxHandler {
 
                 processConsistentVer(r.lastCutVer());
 
-                ctx.consistentCutMgr().handleRemoteTxCutVersion(r.nearXidVer(), r.txCutVer(), false);
+                if (ctx.consistentCutMgr() != null)
+                    ctx.consistentCutMgr().handleRemoteTxCutVersion(r.nearXidVer(), r.txCutVer(), false);
 
                 processDhtTxFinishRequest(nodeId, (GridDhtTxFinishRequest)msg);
             }
@@ -321,8 +323,9 @@ public class IgniteTxHandler {
     }
 
     /** */
-    private void processConsistentVer(long ver) {
-        ctx.consistentCutMgr().handleConsistentCutStart(ver);
+    private void processConsistentVer(long cutVer) {
+        if (ctx.consistentCutMgr() != null)
+            ctx.consistentCutMgr().handleConsistentCutStart(cutVer);
     }
 
     /**
@@ -524,7 +527,8 @@ public class IgniteTxHandler {
                             req.onePhaseCommit(),
                             req.deployInfo() != null);
 
-                        res.lastCutVer(ctx.consistentCutMgr().lastCutVer());
+                        if (ctx.consistentCutMgr() != null)
+                            res.lastCutVer(ctx.consistentCutMgr().lastCutVer());
 
                         try {
                             ctx.io().send(nearNode, res, req.policy());
@@ -735,7 +739,8 @@ public class IgniteTxHandler {
             req.onePhaseCommit(),
             req.deployInfo() != null);
 
-        res.lastCutVer(ctx.consistentCutMgr().lastCutVer());
+        if (ctx.consistentCutMgr() != null)
+            res.lastCutVer(ctx.consistentCutMgr().lastCutVer());
 
         try {
             ctx.io().send(node.id(), res, req.policy());
@@ -1368,14 +1373,17 @@ public class IgniteTxHandler {
                     });
                 }
                 else {
-                    res.txCutVer(dhtTx.commitCutVer());
-                    res.lastCutVer(ctx.consistentCutMgr().lastCutVer());
+                    if (ctx.consistentCutMgr() != null) {
+                        res.txCutVer(dhtTx.commitCutVer());
+                        res.lastCutVer(ctx.consistentCutMgr().lastCutVer());
+                    }
 
                     sendReply(nodeId, req, res, dhtTx, nearTx);
                 }
             }
             else {
-                res.lastCutVer(ctx.consistentCutMgr().lastCutVer());
+                if (ctx.consistentCutMgr() != null)
+                    res.lastCutVer(ctx.consistentCutMgr().lastCutVer());
 
                 sendReply(nodeId, req, res, dhtTx, nearTx);
             }
