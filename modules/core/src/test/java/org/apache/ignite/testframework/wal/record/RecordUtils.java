@@ -24,7 +24,8 @@ import java.util.Map;
 import java.util.function.Supplier;
 import org.apache.ignite.internal.pagemem.FullPageId;
 import org.apache.ignite.internal.pagemem.wal.record.CheckpointRecord;
-import org.apache.ignite.internal.pagemem.wal.record.ConsistentCutRecord;
+import org.apache.ignite.internal.pagemem.wal.record.ConsistentCutFinishRecord;
+import org.apache.ignite.internal.pagemem.wal.record.ConsistentCutStartRecord;
 import org.apache.ignite.internal.pagemem.wal.record.DataRecord;
 import org.apache.ignite.internal.pagemem.wal.record.ExchangeRecord;
 import org.apache.ignite.internal.pagemem.wal.record.IndexRenameRootPageRecord;
@@ -111,7 +112,8 @@ import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType
 import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.BTREE_PAGE_REPLACE;
 import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.CHECKPOINT_RECORD;
 import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.CONSISTENT_CUT;
-import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.CONSISTENT_CUT_RECORD;
+import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.CONSISTENT_CUT_FINISH_RECORD;
+import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.CONSISTENT_CUT_START_RECORD;
 import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.DATA_PAGE_INSERT_FRAGMENT_RECORD;
 import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.DATA_PAGE_INSERT_RECORD;
 import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.DATA_PAGE_REMOVE_RECORD;
@@ -255,7 +257,8 @@ public class RecordUtils {
         put(OUT_OF_ORDER_UPDATE, RecordUtils::buildOutOfOrderRecord);
         put(INDEX_ROOT_PAGE_RENAME_RECORD, RecordUtils::buildIndexRenameRootPageRecord);
         put(PARTITION_CLEARING_START_RECORD, RecordUtils::buildPartitionClearingStartedRecord);
-        put(CONSISTENT_CUT_RECORD, RecordUtils::buildMockConsistentCutRecord);
+        put(CONSISTENT_CUT_START_RECORD, RecordUtils::buildConsistentCutStartRecord);
+        put(CONSISTENT_CUT_FINISH_RECORD, RecordUtils::buildConsistentCutFinishRecord);
     }
 
     /** */
@@ -689,11 +692,15 @@ public class RecordUtils {
     }
 
     /** **/
-    public static ConsistentCutRecord buildMockConsistentCutRecord() {
-        return new ConsistentCutRecord(
+    public static ConsistentCutStartRecord buildConsistentCutStartRecord() {
+        return new ConsistentCutStartRecord(
             System.currentTimeMillis(),
             F.asSet(new GridCacheVersion()),
-            F.asSet(new GridCacheVersion()),
-            false);
+            F.asSet(new GridCacheVersion()));
+    }
+
+    /** **/
+    public static ConsistentCutFinishRecord buildConsistentCutFinishRecord() {
+        return new ConsistentCutFinishRecord(System.currentTimeMillis(), F.asSet(new GridCacheVersion()));
     }
 }

@@ -279,7 +279,10 @@ public abstract class WALRecord {
         PARTITION_CLEARING_START_RECORD(73, LOGICAL),
 
         /** Consistent Cut record. */
-        CONSISTENT_CUT_RECORD(74, LOGICAL);
+        CONSISTENT_CUT_START_RECORD(74, LOGICAL),
+
+        /** Consistent Cut record. */
+        CONSISTENT_CUT_FINISH_RECORD(75, LOGICAL);
 
         /** Index for serialization. Should be consistent throughout all versions. */
         private final int idx;
