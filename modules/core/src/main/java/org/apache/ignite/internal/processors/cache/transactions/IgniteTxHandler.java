@@ -47,6 +47,7 @@ import org.apache.ignite.internal.processors.cache.GridCacheReturnCompletableWra
 import org.apache.ignite.internal.processors.cache.GridCacheSharedContext;
 import org.apache.ignite.internal.processors.cache.GridCacheUpdateTxResult;
 import org.apache.ignite.internal.processors.cache.KeyCacheObject;
+import org.apache.ignite.internal.processors.cache.consistentcut.ConsistentCutVersionAware;
 import org.apache.ignite.internal.processors.cache.distributed.GridCacheTxRecoveryFuture;
 import org.apache.ignite.internal.processors.cache.distributed.GridCacheTxRecoveryRequest;
 import org.apache.ignite.internal.processors.cache.distributed.GridCacheTxRecoveryResponse;
@@ -159,6 +160,8 @@ public class IgniteTxHandler {
                     ", node=" + nearNodeId + ']');
             }
 
+            processConsistentVer(req);
+
             ClusterNode nearNode = ctx.node(nearNodeId);
 
             if (nearNode == null) {
@@ -219,37 +222,19 @@ public class IgniteTxHandler {
 
         ctx.io().addCacheHandler(0, GridNearTxPrepareRequest.class, new CI2<UUID, GridCacheMessage>() {
             @Override public void apply(UUID nodeId, GridCacheMessage msg) {
-                GridNearTxPrepareRequest r = (GridNearTxPrepareRequest)msg;
-
-                processConsistentVer(r.curConsistentVer());
-
-                processNearTxPrepareRequest(nodeId, r);
+                processNearTxPrepareRequest(nodeId, (GridNearTxPrepareRequest)msg);
             }
         });
 
         ctx.io().addCacheHandler(0, GridNearTxPrepareResponse.class, new CI2<UUID, GridCacheMessage>() {
             @Override public void apply(UUID nodeId, GridCacheMessage msg) {
-                GridNearTxPrepareResponse r = (GridNearTxPrepareResponse)msg;
-
-                processConsistentVer(r.latestCutVer());
-
-                if (ctx.consistentCutMgr() != null && r.onePhaseCommit())
-                    ctx.consistentCutMgr().handleRemoteTxCutVersion(r.version(), r.txCutVer(), true);
-
-                processNearTxPrepareResponse(nodeId, r);
+                processNearTxPrepareResponse(nodeId, (GridNearTxPrepareResponse)msg);
             }
         });
 
         ctx.io().addCacheHandler(0, GridNearTxFinishRequest.class, new CI2<UUID, GridCacheMessage>() {
             @Override public void apply(UUID nodeId, GridCacheMessage msg) {
-                GridNearTxFinishRequest r = (GridNearTxFinishRequest)msg;
-
-                processConsistentVer(r.latestCutVer());
-
-                if (ctx.consistentCutMgr() != null)
-                    ctx.consistentCutMgr().handleRemoteTxCutVersion(r.version(), r.txCutVer(), false);
-
-                processNearTxFinishRequest(nodeId, r);
+                processNearTxFinishRequest(nodeId, (GridNearTxFinishRequest)msg);
             }
         });
 
@@ -261,36 +246,18 @@ public class IgniteTxHandler {
 
         ctx.io().addCacheHandler(0, GridDhtTxPrepareRequest.class, new CI2<UUID, GridCacheMessage>() {
             @Override public void apply(UUID nodeId, GridCacheMessage msg) {
-                GridDhtTxPrepareRequest r = (GridDhtTxPrepareRequest)msg;
-
-                processConsistentVer(r.curConsistentVer());
-
-                processDhtTxPrepareRequest(nodeId, r);
+                processDhtTxPrepareRequest(nodeId, (GridDhtTxPrepareRequest)msg);
             }
         });
 
         ctx.io().addCacheHandler(0, GridDhtTxPrepareResponse.class, new CI2<UUID, GridCacheMessage>() {
             @Override public void apply(UUID nodeId, GridCacheMessage msg) {
-                GridDhtTxPrepareResponse r = (GridDhtTxPrepareResponse)msg;
-
-                processConsistentVer(r.latestCutVer());
-
-                if (ctx.consistentCutMgr() != null && r.onePhaseCommit())
-                    ctx.consistentCutMgr().handleRemoteTxCutVersion(r.nearXidVer(), r.txCutVer(), true);
-
-                processDhtTxPrepareResponse(nodeId, r);
+                processDhtTxPrepareResponse(nodeId, (GridDhtTxPrepareResponse)msg);
             }
         });
 
         ctx.io().addCacheHandler(0, GridDhtTxFinishRequest.class, new CI2<UUID, GridCacheMessage>() {
             @Override public void apply(UUID nodeId, GridCacheMessage msg) {
-                GridDhtTxFinishRequest r = (GridDhtTxFinishRequest)msg;
-
-                processConsistentVer(r.latestCutVer());
-
-                if (ctx.consistentCutMgr() != null)
-                    ctx.consistentCutMgr().handleRemoteTxCutVersion(r.nearXidVer(), r.txCutVer(), false);
-
                 processDhtTxFinishRequest(nodeId, (GridDhtTxFinishRequest)msg);
             }
         });
@@ -323,9 +290,13 @@ public class IgniteTxHandler {
     }
 
     /** */
-    private void processConsistentVer(long cutVer) {
-        if (ctx.consistentCutMgr() != null)
-            ctx.consistentCutMgr().handleConsistentCutStart(cutVer);
+    private void processConsistentVer(ConsistentCutVersionAware msg) {
+        if (ctx.consistentCutMgr() != null) {
+            ctx.consistentCutMgr().handleConsistentCutStart(msg.latestCutVersion());
+
+            if (msg.txCutVersion() > 0)
+                ctx.consistentCutMgr().handleRemoteTxCutVersion(msg.nearTxVersion(), msg.txCutVersion());
+        }
     }
 
     /**
@@ -528,7 +499,7 @@ public class IgniteTxHandler {
                             req.deployInfo() != null);
 
                         if (ctx.consistentCutMgr() != null)
-                            res.latestCutVer(ctx.consistentCutMgr().latestCutVer());
+                            res.latestCutVersion(ctx.consistentCutMgr().latestCutVersion());
 
                         try {
                             ctx.io().send(nearNode, res, req.policy());
@@ -740,7 +711,7 @@ public class IgniteTxHandler {
             req.deployInfo() != null);
 
         if (ctx.consistentCutMgr() != null)
-            res.latestCutVer(ctx.consistentCutMgr().latestCutVer());
+            res.latestCutVersion(ctx.consistentCutMgr().latestCutVersion());
 
         try {
             ctx.io().send(node.id(), res, req.policy());
@@ -808,6 +779,8 @@ public class IgniteTxHandler {
                 txPrepareMsgLog.debug("Received near prepare response [txId=" + res.version() + ", node=" +
                     nodeId + ']');
 
+            processConsistentVer(res);
+
             GridNearTxPrepareFutureAdapter fut = (GridNearTxPrepareFutureAdapter)ctx.mvcc()
                 .<IgniteInternalTx>versionedFuture(res.version(), res.futureId());
 
@@ -826,7 +799,7 @@ public class IgniteTxHandler {
             res.txState(tx.txState());
 
             if (res.onePhaseCommit())
-                fut.commitCutVer(res.txCutVer());
+                fut.commitCutVer(res.txCutVersion());
 
             fut.onResult(nodeId, res);
         }
@@ -865,6 +838,9 @@ public class IgniteTxHandler {
     private void processDhtTxPrepareResponse(UUID nodeId, GridDhtTxPrepareResponse res) {
         try (TraceSurroundings ignored =
                  MTC.support(ctx.kernalContext().tracing().create(TX_PROCESS_DHT_PREPARE_RESP, MTC.span()))) {
+
+            processConsistentVer(res);
+
             GridDhtTxPrepareFuture fut =
                 (GridDhtTxPrepareFuture)ctx.mvcc().versionedFuture(res.version(), res.futureId());
 
@@ -888,7 +864,7 @@ public class IgniteTxHandler {
 
             res.txState(tx.txState());
 
-            fut.commitCutVer(res.txCutVer());
+            fut.commitCutVer(res.txCutVersion());
 
             fut.onResult(nodeId, res);
         }
@@ -964,6 +940,8 @@ public class IgniteTxHandler {
                 txFinishMsgLog.debug("Received near finish request [txId=" + req.version() + ", node=" + nodeId +
                     ']');
 
+            processConsistentVer(req);
+
             IgniteInternalFuture<IgniteInternalTx> fut = finish(nodeId, null, req);
 
             assert req.txState() != null || fut == null || fut.error() != null ||
@@ -1004,8 +982,8 @@ public class IgniteTxHandler {
         IgniteInternalFuture<IgniteInternalTx> colocatedFinishFut = null;
 
         if (locTx != null && locTx.colocatedLocallyMapped()) {
-            if (req.txCutVer() > 0)
-                locTx.commitCutVer(req.txCutVer());
+            if (req.txCutVersion() > 0)
+                locTx.commitCutVer(req.txCutVersion());
 
             colocatedFinishFut = finishColocatedLocal(req.commit(), locTx);
         }
@@ -1129,8 +1107,8 @@ public class IgniteTxHandler {
             tx.nearFinishMiniId(req.miniId());
             tx.storeEnabled(req.storeEnabled());
             // Commit primary node that equals to the near node.
-            if (req.txCutVer() > 0)
-                tx.commitCutVer(req.txCutVer());
+            if (req.txCutVersion() > 0)
+                tx.commitCutVer(req.txCutVersion());
 
             if (!tx.markFinalizing(USER_FINISH)) {
                 if (log.isDebugEnabled())
@@ -1250,6 +1228,8 @@ public class IgniteTxHandler {
             assert req != null;
 
             assert req.transactionNodes() != null;
+
+            processConsistentVer(req);
 
             GridDhtTxRemote dhtTx = null;
             GridNearTxRemote nearTx = null;
@@ -1374,8 +1354,8 @@ public class IgniteTxHandler {
                 }
                 else {
                     if (ctx.consistentCutMgr() != null) {
-                        res.txCutVer(dhtTx.commitCutVer());
-                        res.latestCutVer(ctx.consistentCutMgr().latestCutVer());
+                        res.txCutVersion(dhtTx.commitCutVer());
+                        res.latestCutVersion(ctx.consistentCutMgr().latestCutVersion());
                     }
 
                     sendReply(nodeId, req, res, dhtTx, nearTx);
@@ -1383,7 +1363,7 @@ public class IgniteTxHandler {
             }
             else {
                 if (ctx.consistentCutMgr() != null)
-                    res.latestCutVer(ctx.consistentCutMgr().latestCutVer());
+                    res.latestCutVersion(ctx.consistentCutMgr().latestCutVersion());
 
                 sendReply(nodeId, req, res, dhtTx, nearTx);
             }
@@ -1422,6 +1402,8 @@ public class IgniteTxHandler {
                  MTC.support(ctx.kernalContext().tracing().create(TX_PROCESS_DHT_FINISH_REQ, MTC.span()))) {
             assert nodeId != null;
             assert req != null;
+
+            processConsistentVer(req);
 
             if (req.checkCommitted()) {
                 boolean committed = req.waitRemoteTransactions() || !ctx.tm().addRolledbackTx(null, req.version());
