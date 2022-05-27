@@ -231,7 +231,7 @@ public class IgniteTxHandler {
             @Override public void apply(UUID nodeId, GridCacheMessage msg) {
                 GridNearTxPrepareResponse r = (GridNearTxPrepareResponse)msg;
 
-                processConsistentVer(r.lastCutVer());
+                processConsistentVer(r.latestCutVer());
 
                 if (ctx.consistentCutMgr() != null && r.onePhaseCommit())
                     ctx.consistentCutMgr().handleRemoteTxCutVersion(r.version(), r.txCutVer(), true);
@@ -244,7 +244,7 @@ public class IgniteTxHandler {
             @Override public void apply(UUID nodeId, GridCacheMessage msg) {
                 GridNearTxFinishRequest r = (GridNearTxFinishRequest)msg;
 
-                processConsistentVer(r.lastCutVer());
+                processConsistentVer(r.latestCutVer());
 
                 if (ctx.consistentCutMgr() != null)
                     ctx.consistentCutMgr().handleRemoteTxCutVersion(r.version(), r.txCutVer(), false);
@@ -273,7 +273,7 @@ public class IgniteTxHandler {
             @Override public void apply(UUID nodeId, GridCacheMessage msg) {
                 GridDhtTxPrepareResponse r = (GridDhtTxPrepareResponse)msg;
 
-                processConsistentVer(r.lastCutVer());
+                processConsistentVer(r.latestCutVer());
 
                 if (ctx.consistentCutMgr() != null && r.onePhaseCommit())
                     ctx.consistentCutMgr().handleRemoteTxCutVersion(r.nearXidVer(), r.txCutVer(), true);
@@ -286,7 +286,7 @@ public class IgniteTxHandler {
             @Override public void apply(UUID nodeId, GridCacheMessage msg) {
                 GridDhtTxFinishRequest r = (GridDhtTxFinishRequest)msg;
 
-                processConsistentVer(r.lastCutVer());
+                processConsistentVer(r.latestCutVer());
 
                 if (ctx.consistentCutMgr() != null)
                     ctx.consistentCutMgr().handleRemoteTxCutVersion(r.nearXidVer(), r.txCutVer(), false);
@@ -528,7 +528,7 @@ public class IgniteTxHandler {
                             req.deployInfo() != null);
 
                         if (ctx.consistentCutMgr() != null)
-                            res.lastCutVer(ctx.consistentCutMgr().latestCutVer());
+                            res.latestCutVer(ctx.consistentCutMgr().latestCutVer());
 
                         try {
                             ctx.io().send(nearNode, res, req.policy());
@@ -740,7 +740,7 @@ public class IgniteTxHandler {
             req.deployInfo() != null);
 
         if (ctx.consistentCutMgr() != null)
-            res.lastCutVer(ctx.consistentCutMgr().latestCutVer());
+            res.latestCutVer(ctx.consistentCutMgr().latestCutVer());
 
         try {
             ctx.io().send(node.id(), res, req.policy());
@@ -1375,7 +1375,7 @@ public class IgniteTxHandler {
                 else {
                     if (ctx.consistentCutMgr() != null) {
                         res.txCutVer(dhtTx.commitCutVer());
-                        res.lastCutVer(ctx.consistentCutMgr().latestCutVer());
+                        res.latestCutVer(ctx.consistentCutMgr().latestCutVer());
                     }
 
                     sendReply(nodeId, req, res, dhtTx, nearTx);
@@ -1383,7 +1383,7 @@ public class IgniteTxHandler {
             }
             else {
                 if (ctx.consistentCutMgr() != null)
-                    res.lastCutVer(ctx.consistentCutMgr().latestCutVer());
+                    res.latestCutVer(ctx.consistentCutMgr().latestCutVer());
 
                 sendReply(nodeId, req, res, dhtTx, nearTx);
             }

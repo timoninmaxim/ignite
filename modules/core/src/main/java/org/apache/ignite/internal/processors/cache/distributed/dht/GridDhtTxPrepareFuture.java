@@ -811,7 +811,7 @@ public final class GridDhtTxPrepareFuture extends GridCacheCompoundFuture<Ignite
                                     }
 
                                     if (cctx.consistentCutMgr() != null)
-                                        res.lastCutVer(cctx.consistentCutMgr().latestCutVer());
+                                        res.latestCutVer(cctx.consistentCutMgr().latestCutVer());
 
                                     sendPrepareResponse(res);
                                 }
@@ -867,7 +867,7 @@ public final class GridDhtTxPrepareFuture extends GridCacheCompoundFuture<Ignite
                     onComplete(res);
 
                     if (cctx.consistentCutMgr() != null)
-                        res.lastCutVer(cctx.consistentCutMgr().latestCutVer());
+                        res.latestCutVer(cctx.consistentCutMgr().latestCutVer());
 
                     sendPrepareResponse(res);
 
