@@ -2135,12 +2135,12 @@ public class GridCacheUtils {
      * @param cfg Ignite configuration.
      * @return {@code true} if PITR enabled.
      */
-    public static long getPitrPointsFrequency(IgniteConfiguration cfg) {
+    public static long getPitrPointsPeriod(IgniteConfiguration cfg) {
         DataStorageConfiguration dsCfg = cfg.getDataStorageConfiguration();
 
         assert isPitrEnabled(cfg);
 
-        return dsCfg.getPointInTimeRecoveryFreq();
+        return dsCfg.getPointInTimeRecoveryPeriod();
     }
 
     /**
