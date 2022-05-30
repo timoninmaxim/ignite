@@ -128,8 +128,10 @@ public abstract class GridDistributedTxRemoteAdapter extends IgniteTxAdapter
     @GridToStringInclude
     @Nullable private String txLbl;
 
-    /** TODO: For one-phase commit only. */
-    private volatile long commitCutVer;
+    /**
+     * Latest Consistent Cut Version that doesn't include this transaction. Filled for 1PC cases.
+     */
+    private volatile long txCutVer;
 
     /**
      * @param ctx Cache registry.
@@ -188,8 +190,8 @@ public abstract class GridDistributedTxRemoteAdapter extends IgniteTxAdapter
     }
 
     /** */
-    public long commitCutVer() {
-        return commitCutVer;
+    public long txCutVer() {
+        return txCutVer;
     }
 
     /** {@inheritDoc} */
@@ -865,7 +867,7 @@ public abstract class GridDistributedTxRemoteAdapter extends IgniteTxAdapter
         super.notifyConsistentCutOnCommit();
 
         if (onePhaseCommit && dht() && !local())
-            commitCutVer = cctx.consistentCutMgr().txCutVersion(this);
+            txCutVer = cctx.consistentCutMgr().txCutVersion(this);
     }
 
     /** {@inheritDoc} */

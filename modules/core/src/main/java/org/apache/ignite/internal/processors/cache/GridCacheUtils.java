@@ -2120,7 +2120,7 @@ public class GridCacheUtils {
 
     /**
      * @param cfg Ignite configuration.
-     * @return {@code true} if PITR enabled.
+     * @return {@code true} if the PITR feature is enabled, otherwise {@code false}.
      */
     public static boolean isPitrEnabled(IgniteConfiguration cfg) {
         DataStorageConfiguration dsCfg = cfg.getDataStorageConfiguration();
@@ -2133,7 +2133,7 @@ public class GridCacheUtils {
 
     /**
      * @param cfg Ignite configuration.
-     * @return {@code true} if PITR enabled.
+     * @return Period of preparing recovery points for the PITR feature.
      */
     public static long getPitrPointsPeriod(IgniteConfiguration cfg) {
         DataStorageConfiguration dsCfg = cfg.getDataStorageConfiguration();
