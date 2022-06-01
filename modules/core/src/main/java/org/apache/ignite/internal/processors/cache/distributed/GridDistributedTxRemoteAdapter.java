@@ -194,6 +194,11 @@ public abstract class GridDistributedTxRemoteAdapter extends IgniteTxAdapter
         return txCutVer;
     }
 
+    /** */
+    public void txCutVer(long txCutVer) {
+        this.txCutVer = txCutVer;
+    }
+
     /** {@inheritDoc} */
     @Override public IgniteTxState txState() {
         return txState;
@@ -860,14 +865,6 @@ public abstract class GridDistributedTxRemoteAdapter extends IgniteTxAdapter
                 state(COMMITTED);
             }
         }
-    }
-
-    /** {@inheritDoc} */
-    @Override protected void notifyConsistentCutOnCommit() {
-        super.notifyConsistentCutOnCommit();
-
-        if (onePhaseCommit && dht() && !local())
-            txCutVer = cctx.consistentCutMgr().txCutVersion(this);
     }
 
     /** {@inheritDoc} */
