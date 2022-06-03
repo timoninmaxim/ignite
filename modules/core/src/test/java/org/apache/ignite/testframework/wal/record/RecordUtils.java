@@ -693,9 +693,7 @@ public class RecordUtils {
 
     /** **/
     public static ConsistentCutStartRecord buildConsistentCutStartRecord() {
-        return new ConsistentCutStartRecord(
-            System.currentTimeMillis(),
-            F.asSet(new GridCacheVersion()));
+        return new ConsistentCutStartRecord(System.currentTimeMillis());
     }
 
     /** **/
