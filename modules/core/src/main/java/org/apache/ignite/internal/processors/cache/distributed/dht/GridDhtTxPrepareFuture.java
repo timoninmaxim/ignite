@@ -812,7 +812,7 @@ public final class GridDhtTxPrepareFuture extends GridCacheCompoundFuture<Ignite
                                     }
 
                                     if (cctx.consistentCutMgr() != null)
-                                        res.latestCutVersion(cctx.consistentCutMgr().latestCutVersion());
+                                        res.latestCutVersion(cctx.consistentCutMgr().latestKnownCutVersion());
 
                                     sendPrepareResponse(res);
                                 }
@@ -868,7 +868,7 @@ public final class GridDhtTxPrepareFuture extends GridCacheCompoundFuture<Ignite
                     onComplete(res);
 
                     if (cctx.consistentCutMgr() != null)
-                        res.latestCutVersion(cctx.consistentCutMgr().latestCutVersion());
+                        res.latestCutVersion(cctx.consistentCutMgr().latestKnownCutVersion());
 
                     sendPrepareResponse(res);
 
@@ -1484,7 +1484,7 @@ public final class GridDhtTxPrepareFuture extends GridCacheCompoundFuture<Ignite
                 retVal,
                 mvccSnapshot,
                 cctx.tm().txHandler().filterUpdateCountersForBackupNode(tx, n),
-                cctx.consistentCutMgr() != null ? cctx.consistentCutMgr().latestCutVersion() : 0);
+                cctx.consistentCutMgr() != null ? cctx.consistentCutMgr().latestKnownCutVersion() : 0);
 
             req.queryUpdate(dhtMapping.queryUpdate());
 
@@ -1599,7 +1599,7 @@ public final class GridDhtTxPrepareFuture extends GridCacheCompoundFuture<Ignite
                     retVal,
                     mvccSnapshot,
                     null,
-                    cctx.consistentCutMgr() != null ? cctx.consistentCutMgr().latestCutVersion() : 0);
+                    cctx.consistentCutMgr() != null ? cctx.consistentCutMgr().latestKnownCutVersion() : 0);
 
                 for (IgniteTxEntry entry : nearMapping.entries()) {
                     if (CU.writes().apply(entry)) {
