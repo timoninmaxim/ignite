@@ -1149,7 +1149,7 @@ public class IgniteCacheDatabaseSharedManager extends GridCacheSharedManagerAdap
         if (ptr != null)
             ptr = ptr.next();
 
-        cctx.wal(true).resumeLogging(ptr);
+        cctx.wal(true).resumeLogging(ptr, false);
     }
 
     /**

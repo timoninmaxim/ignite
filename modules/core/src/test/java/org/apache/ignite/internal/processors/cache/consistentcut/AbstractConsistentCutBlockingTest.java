@@ -30,6 +30,7 @@ import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.IgniteInternalFuture;
+import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.TestRecordingCommunicationSpi;
 import org.apache.ignite.internal.pagemem.wal.IgniteWriteAheadLogManager;
 import org.apache.ignite.internal.pagemem.wal.record.TxRecord;
@@ -483,7 +484,7 @@ public abstract class AbstractConsistentCutBlockingTest extends AbstractConsiste
             if (blkRecord(record)) {
                 blocked = true;
 
-                U.awaitQuiet(latch);
+                U.await(latch);
             }
 
             return super.log(record);
@@ -552,7 +553,12 @@ public abstract class AbstractConsistentCutBlockingTest extends AbstractConsiste
                             blockedLatch.countDown();
                             blockedLatch = null;
 
-                            U.awaitQuiet(beforeUpdVer);
+                            try {
+                                U.await(beforeUpdVer);
+                            }
+                            catch (IgniteInterruptedCheckedException e) {
+                                // No-op.
+                            }
 
                             beforeUpdVer = null;
                         }
@@ -571,7 +577,12 @@ public abstract class AbstractConsistentCutBlockingTest extends AbstractConsiste
                 blockedLatch.countDown();
                 blockedLatch = null;
 
-                U.awaitQuiet(beforeFinish);
+                try {
+                    U.await(beforeFinish);
+                }
+                catch (IgniteInterruptedCheckedException e) {
+                    // No-op.
+                }
 
                 beforeFinish = null;
             }
@@ -592,8 +603,8 @@ public abstract class AbstractConsistentCutBlockingTest extends AbstractConsiste
         }
 
         /** */
-        public void awaitBlocked() {
-            U.awaitQuiet(blockedLatch);
+        public void awaitBlocked() throws IgniteInterruptedCheckedException  {
+            U.await(blockedLatch);
         }
 
         /** */
@@ -629,7 +640,7 @@ public abstract class AbstractConsistentCutBlockingTest extends AbstractConsiste
                     blockedLatch.countDown();
                     blockedLatch = null;
 
-                    U.awaitQuiet(afterUpdVer);
+                    U.await(afterUpdVer);
 
                     afterUpdVer = null;
                 }

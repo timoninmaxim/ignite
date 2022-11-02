@@ -1,0 +1,180 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.ignite.internal.processors.cache.persistence.wal.serializer;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.HashSet;
+import java.util.Set;
+import org.apache.ignite.internal.pagemem.wal.record.ConsistentCutFinishRecord;
+import org.apache.ignite.internal.pagemem.wal.record.ConsistentCutRecoveryRecord;
+import org.apache.ignite.internal.pagemem.wal.record.ConsistentCutStartRecord;
+import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.processors.cache.consistentcut.ConsistentCutVersion;
+import org.apache.ignite.internal.processors.cache.persistence.tree.io.CacheVersionIO;
+import org.apache.ignite.internal.processors.cache.persistence.wal.ByteBufferBackedDataInput;
+import org.apache.ignite.internal.processors.cache.version.GridCacheVersion;
+
+import static org.apache.ignite.internal.processors.cache.persistence.wal.serializer.RecordV1Serializer.putVersion;
+import static org.apache.ignite.internal.processors.cache.persistence.wal.serializer.RecordV1Serializer.readVersion;
+
+/** */
+public class ConsistentCutRecordsSerializer {
+    /**
+     * Writes {@link ConsistentCutFinishRecord} to given buffer.
+     *
+     * @param rec Consistent cut record.
+     * @param buf Byte buffer.
+     */
+    public void writeFinish(ConsistentCutFinishRecord rec, ByteBuffer buf) {
+        buf.putInt(rec.before().size());
+
+        for (GridCacheVersion v: rec.before())
+            putVersion(buf, v, false);
+
+        buf.putInt(rec.after().size());
+
+        for (GridCacheVersion v: rec.after())
+            putVersion(buf, v, false);
+    }
+
+    /**
+     * Reads {@link ConsistentCutFinishRecord} from given input.
+     *
+     * @param in Input
+     * @return ConsistentCutFinishRecord.
+     * @throws IOException In case of fail.
+     */
+    public ConsistentCutFinishRecord readFinish(ByteBufferBackedDataInput in) throws IOException {
+        Set<GridCacheVersion> before = readSetTxs(in);
+        Set<GridCacheVersion> after = readSetTxs(in);
+
+        return new ConsistentCutFinishRecord(before, after);
+    }
+
+    /**
+     * Returns size of marshalled {@link ConsistentCutFinishRecord} in bytes.
+     *
+     * @param rec ConsistentCutFinishRecord.
+     * @return Size of ConsistentCutFinishRecord in bytes.
+     */
+    public int sizeFinish(ConsistentCutFinishRecord rec) {
+        int size = 4 + 4;  // Before and after tx count.
+
+        for (GridCacheVersion v: rec.before())
+            size += CacheVersionIO.size(v, false);
+
+        for (GridCacheVersion v: rec.after())
+            size += CacheVersionIO.size(v, false);
+
+        return size;
+    }
+
+    /**
+     * Writes {@link ConsistentCutStartRecord} to given buffer.
+     *
+     * @param rec Consistent cut record.
+     * @param buf Byte buffer.
+     */
+    public void writeStart(ConsistentCutStartRecord rec, ByteBuffer buf) {
+        buf.putLong(rec.version().version());
+
+        buf.putLong(rec.version().topologyVersion().topologyVersion());
+        buf.putInt(rec.version().topologyVersion().minorTopologyVersion());
+    }
+
+    /**
+     * Reads {@link ConsistentCutStartRecord} from given input.
+     *
+     * @param in Input
+     * @return ConsistentCutStartRecord.
+     * @throws IOException In case of fail.
+     */
+    public ConsistentCutStartRecord readStart(ByteBufferBackedDataInput in) throws IOException {
+        long ver = in.readLong();
+
+        long topVer = in.readLong();
+        int minTopVer = in.readInt();
+
+        return new ConsistentCutStartRecord(new ConsistentCutVersion(ver, new AffinityTopologyVersion(topVer, minTopVer)));
+    }
+
+    /**
+     * Returns size of marshalled {@link ConsistentCutStartRecord} in bytes.
+     *
+     * @param rec ConsistentCutStartRecord.
+     * @return Size of ConsistentCutStartRecord in bytes.
+     */
+    public int sizeStart(ConsistentCutStartRecord rec) {
+        return 8 + 12;  // Cut version + Topology version.
+    }
+
+    /**
+     * Writes {@link ConsistentCutRecoveryRecord} to given buffer.
+     *
+     * @param rec Consistent cut record.
+     * @param buf Byte buffer.
+     */
+    public void writeRecovery(ConsistentCutRecoveryRecord rec, ByteBuffer buf) {
+        buf.putLong(rec.version().version());
+
+        buf.putLong(rec.version().topologyVersion().topologyVersion());
+        buf.putInt(rec.version().topologyVersion().minorTopologyVersion());
+    }
+
+    /**
+     * Reads {@link ConsistentCutRecoveryRecord} from given input.
+     *
+     * @param in Input
+     * @return ConsistentCutRecoveryRecord.
+     * @throws IOException In case of fail.
+     */
+    public ConsistentCutRecoveryRecord readRecovery(ByteBufferBackedDataInput in) throws IOException {
+        long ver = in.readLong();
+
+        long topVer = in.readLong();
+        int minTopVer = in.readInt();
+
+        return new ConsistentCutRecoveryRecord(new ConsistentCutVersion(ver, new AffinityTopologyVersion(topVer, minTopVer)));
+    }
+
+    /**
+     * Returns size of marshalled {@link ConsistentCutRecoveryRecord} in bytes.
+     *
+     * @param rec ConsistentCutRecoveryRecord.
+     * @return Size of ConsistentCutStartRecord in bytes.
+     */
+    public int sizeRecovery(ConsistentCutRecoveryRecord rec) {
+        return 8 + 12;  // Cut version + Topology version.
+    }
+
+    /** */
+    private Set<GridCacheVersion> readSetTxs(ByteBufferBackedDataInput in) throws IOException {
+        int txsSize = in.readInt();
+
+        Set<GridCacheVersion> txs = new HashSet<>();
+
+        for (int i = 0; i < txsSize; i++) {
+            GridCacheVersion v = readVersion(in, false);
+
+            txs.add(v);
+        }
+
+        return txs;
+    }
+}

@@ -51,6 +51,7 @@ import org.apache.ignite.internal.processors.cache.distributed.near.GridNearTxFi
 import org.apache.ignite.internal.processors.cache.distributed.near.GridNearTxPrepareRequest;
 import org.apache.ignite.internal.processors.cache.distributed.near.GridNearTxPrepareResponse;
 import org.apache.ignite.internal.processors.cache.persistence.wal.reader.IgniteWalIteratorFactory;
+import org.apache.ignite.internal.processors.cache.version.GridCacheVersion;
 import org.apache.ignite.internal.util.typedef.G;
 import org.apache.ignite.internal.util.typedef.T2;
 import org.apache.ignite.internal.util.typedef.internal.U;
@@ -80,7 +81,7 @@ public abstract class AbstractConsistentCutTest extends GridCommonAbstractTest {
     private final Random rnd = new Random();
 
     /** nodeIdx -> Consistent Node ID. */
-    private final List<UUID> consistentIds = new ArrayList<>();
+    protected final List<UUID> consistentIds = new ArrayList<>();
 
     /** {@inheritDoc} */
     @Override protected IgniteConfiguration getConfiguration(String instanceName) throws Exception {
@@ -91,22 +92,21 @@ public abstract class AbstractConsistentCutTest extends GridCommonAbstractTest {
             .setPitrPeriod(CONSISTENT_CUT_PERIOD)
             .setDataRegionConfigurations(new DataRegionConfiguration()
                 .setName("consistent-cut-persist")
-                .setPersistenceEnabled(true)));
-
-        cfg.setCacheConfiguration(
-            new CacheConfiguration<Integer, Integer>()
-                .setName(CACHE)
-                .setAtomicityMode(CacheAtomicityMode.TRANSACTIONAL)
-                .setBackups(backups())
-                .setDataRegionName("consistent-cut-persist"));
+                .setPersistenceEnabled(true)))
+            .setCacheConfiguration(cacheConfiguration(CACHE));
 
         cfg.setCommunicationSpi(new LogCommunicationSpi());
 
         cfg.setPluginProviders(new TestConsistentCutManagerPluginProvider());
 
-        cfg.setConsistentId(UUID.randomUUID());
+        int idx = getTestIgniteInstanceIndex(instanceName);
 
-        consistentIds.add((UUID)cfg.getConsistentId());
+        if (consistentIds.size() > idx)
+            cfg.setConsistentId(consistentIds.get(idx));
+        else {
+            cfg.setConsistentId(UUID.randomUUID());
+            consistentIds.add((UUID)cfg.getConsistentId());
+        }
 
         return cfg;
     }
@@ -138,6 +138,15 @@ public abstract class AbstractConsistentCutTest extends GridCommonAbstractTest {
      * @return Number of backups for cache.
      */
     protected abstract int backups();
+
+    /** */
+    protected CacheConfiguration<Integer, Integer> cacheConfiguration(String cacheName) {
+        return new CacheConfiguration<Integer, Integer>()
+            .setName(cacheName)
+            .setAtomicityMode(CacheAtomicityMode.TRANSACTIONAL)
+            .setBackups(backups())
+            .setDataRegionName("consistent-cut-persist");
+    }
 
     /**
      * Await that every node received Consistent Cut version.
@@ -279,6 +288,8 @@ public abstract class AbstractConsistentCutTest extends GridCommonAbstractTest {
 
         stopAllGrids();
 
+        consistentIds.clear();
+
         return m;
     }
 
@@ -314,9 +325,9 @@ public abstract class AbstractConsistentCutTest extends GridCommonAbstractTest {
             assertEquals(expCuts, reader.cuts.size());
         }
 
-        Map<IgniteUuid, T2<Long, Integer>> txMap = new HashMap<>();
+        Map<GridCacheVersion, T2<Long, Integer>> txMap = new HashMap<>();
 
-        Map<IgniteUuid, TransactionState> txStates = new HashMap<>();
+        Map<GridCacheVersion, TransactionState> txStates = new HashMap<>();
 
         // Includes incomplete state also.
         for (int cutId = 0; cutId < cuts + 1; cutId++) {
@@ -327,12 +338,12 @@ public abstract class AbstractConsistentCutTest extends GridCommonAbstractTest {
 
                 ConsistentCutWalReader.NodeConsistentCutState state = states.get(nodeId).cuts.get(cutId);
 
-                for (IgniteUuid uid: state.committedTx) {
+                for (GridCacheVersion uid : state.committedTx) {
                     T2<Long, Integer> prev = txMap.put(uid, new T2<>(state.ver, nodeId));
 
                     if (prev != null) {
-                        assertTrue("Transaction miscutted: " + uid + ". Node" + prev.get2() + "=" + prev.get1() +
-                            ". Node" + nodeId + "=" + state.ver, prev.get1() == state.ver);
+                        assertTrue("Transaction miscutted: " + uid.asIgniteUuid() + ". Node" + prev.get2() + "="
+                            + prev.get1() + ". Node" + nodeId + "=" + state.ver, prev.get1() == state.ver);
                     }
 
                     TransactionState prevState = txStates.put(uid, TransactionState.COMMITTED);
@@ -408,7 +419,7 @@ public abstract class AbstractConsistentCutTest extends GridCommonAbstractTest {
         }
 
         /** */
-        static boolean disabled(IgniteEx ign) {
+        public static boolean disabled(IgniteEx ign) {
             return cutMgr(ign).scheduleConsistentCutTask == null;
         }
     }

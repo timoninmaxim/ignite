@@ -63,6 +63,8 @@ import org.apache.ignite.internal.processors.affinity.GridAffinityAssignmentCach
 import org.apache.ignite.internal.processors.cache.GridCacheSharedContext;
 import org.apache.ignite.internal.processors.cache.GridLocalConfigManager;
 import org.apache.ignite.internal.processors.cache.StoredCacheData;
+import org.apache.ignite.internal.processors.cache.consistentcut.ConsistentCutVersion;
+import org.apache.ignite.internal.processors.cache.consistentcut.recovery.ConsistentCutRecovery;
 import org.apache.ignite.internal.processors.cache.persistence.file.FilePageStoreManager;
 import org.apache.ignite.internal.processors.cache.persistence.snapshot.IgniteSnapshotManager.ClusterSnapshotFuture;
 import org.apache.ignite.internal.processors.cluster.DiscoveryDataClusterState;
@@ -93,6 +95,7 @@ import static org.apache.ignite.internal.util.distributed.DistributedProcess.Dis
 import static org.apache.ignite.internal.util.distributed.DistributedProcess.DistributedProcessType.RESTORE_CACHE_GROUP_SNAPSHOT_PREPARE;
 import static org.apache.ignite.internal.util.distributed.DistributedProcess.DistributedProcessType.RESTORE_CACHE_GROUP_SNAPSHOT_ROLLBACK;
 import static org.apache.ignite.internal.util.distributed.DistributedProcess.DistributedProcessType.RESTORE_CACHE_GROUP_SNAPSHOT_START;
+import static org.apache.ignite.internal.util.distributed.DistributedProcess.DistributedProcessType.RESTORE_CACHE_GROUP_SNAPSHOT_WAL_RECOVERY;
 
 /**
  * Distributed process to restore cache group from the snapshot.
@@ -125,6 +128,9 @@ public class SnapshotRestoreProcess {
     /** Cache group restore cache start phase. */
     private final DistributedProcess<UUID, Boolean> cacheStartProc;
 
+    /** WAL cache recovery phase. */
+    private final DistributedProcess<UUID, Boolean> walRecoveryProc;
+
     /** Cache group restore rollback phase. */
     private final DistributedProcess<UUID, Boolean> rollbackRestoreProc;
 
@@ -156,6 +162,9 @@ public class SnapshotRestoreProcess {
 
         cacheStartProc = new DistributedProcess<>(
             ctx, RESTORE_CACHE_GROUP_SNAPSHOT_START, this::cacheStart, this::finishCacheStart);
+
+        walRecoveryProc = new DistributedProcess<>(
+            ctx, RESTORE_CACHE_GROUP_SNAPSHOT_WAL_RECOVERY, this::walRecovery, this::finishWalRecovery);
 
         rollbackRestoreProc = new DistributedProcess<>(
             ctx, RESTORE_CACHE_GROUP_SNAPSHOT_ROLLBACK, this::rollback, this::finishRollback);
@@ -209,9 +218,15 @@ public class SnapshotRestoreProcess {
      * @param snpName Snapshot name.
      * @param snpPath Snapshot directory path.
      * @param cacheGrpNames Cache groups to be restored or {@code null} to restore all cache groups from the snapshot.
+     * @param restoreWalArcives If {@code true} then restore also data from WAL archives.
      * @return Future that will be completed when the restore operation is complete and the cache groups are started.
      */
-    public IgniteFuture<Void> start(String snpName, @Nullable String snpPath, @Nullable Collection<String> cacheGrpNames) {
+    public IgniteFuture<Void> start(
+        String snpName,
+        @Nullable String snpPath,
+        @Nullable Collection<String> cacheGrpNames,
+        boolean restoreWalArcives
+    ) {
         IgniteSnapshotManager snpMgr = ctx.cache().context().snapshotMgr();
         ClusterSnapshotFuture fut0;
 
@@ -277,7 +292,7 @@ public class SnapshotRestoreProcess {
 
         snpMgr.recordSnapshotEvent(snpName, msg, EventType.EVT_CLUSTER_SNAPSHOT_RESTORE_STARTED);
 
-        snpMgr.checkSnapshot(snpName, snpPath, cacheGrpNames, true).listen(f -> {
+        snpMgr.checkSnapsnotAndWal(snpName, snpPath, cacheGrpNames, true, restoreWalArcives).listen(f -> {
             if (f.error() != null) {
                 finishProcess(fut0.rqId, f.error());
 
@@ -332,7 +347,7 @@ public class SnapshotRestoreProcess {
             Collection<UUID> bltNodes = F.viewReadOnly(ctx.discovery().discoCache().aliveBaselineNodes(), F.node2id());
 
             SnapshotOperationRequest req = new SnapshotOperationRequest(
-                fut0.rqId, F.first(dataNodes), snpName, snpPath, cacheGrpNames, new HashSet<>(bltNodes));
+                fut0.rqId, F.first(dataNodes), snpName, snpPath, f.result().cutVersions(), cacheGrpNames, new HashSet<>(bltNodes));
 
             prepareRestoreProc.start(req.requestId(), req);
         });
@@ -1150,7 +1165,87 @@ public class SnapshotRestoreProcess {
             orElse(checkNodeLeft(opCtx0.nodes(), res.keySet()));
 
         if (failure == null) {
+            if (!F.isEmpty(opCtx0.cutVers)) {
+                if (U.isLocalNodeCoordinator(ctx.discovery()))
+                    walRecoveryProc.start(reqId, reqId);
+
+                return;
+            }
+
+            // After recovery on ClusterSnapshot only.
             if (CU.isPitrEnabled(ctx.config()) && U.isLocalNodeCoordinator(ctx.discovery()))
+                ctx.cache().context().consistentCutMgr().scheduleConsistentCut();
+
+            finishProcess(reqId, null);
+
+            return;
+        }
+
+        opCtx0.err.compareAndSet(null, failure);
+
+        if (U.isLocalNodeCoordinator(ctx.discovery()))
+            rollbackRestoreProc.start(reqId, reqId);
+    }
+
+    /**
+     * @param reqId Request ID.
+     * @return Result future.
+     */
+    private IgniteInternalFuture<Boolean> walRecovery(UUID reqId) {
+        if (ctx.clientNode())
+            return new GridFinishedFuture<>();
+
+        SnapshotRestoreContext opCtx0 = opCtx;
+
+        Throwable err = opCtx0.err.get();
+
+        if (err != null)
+            return new GridFinishedFuture<>(err);
+
+        Collection<StoredCacheData> ccfgs = opCtx0.cfgs.values();
+
+        if (log.isInfoEnabled()) {
+            log.info("Starting WAL recovery process " +
+                "[reqId=" + opCtx0.reqId + ", snapshot=" + opCtx0.snpName +
+                ", caches=" + F.viewReadOnly(ccfgs, c -> c.config().getName()) +
+                ", cutVers=" + opCtx0.cutVers + ']');
+        }
+
+        // If no common version, then skip recovering with WAL.
+        if (opCtx0.cutVers == null)
+            return new GridFinishedFuture<>(true);
+
+        GridFutureAdapter<Boolean> walRecFut = new GridFutureAdapter<>();
+
+        new ConsistentCutRecovery(ctx, opCtx0.snpName, opCtx0.cfgs.keySet())
+            .start(opCtx0.cutVers)
+            .listen(rec -> {
+                if (rec.error() != null)
+                    walRecFut.onDone(rec.error());
+                else
+                    walRecFut.onDone(rec.result());
+                }
+            );
+
+        return walRecFut;
+    }
+
+    /**
+     * @param reqId Request ID.
+     * @param res Results.
+     * @param errs Errors.
+     */
+    private void finishWalRecovery(UUID reqId, Map<UUID, Boolean> res, Map<UUID, Exception> errs) {
+        if (ctx.clientNode())
+            return;
+
+        SnapshotRestoreContext opCtx0 = opCtx;
+
+        Exception failure = errs.values().stream().findFirst().
+            orElse(checkNodeLeft(opCtx0.nodes(), res.keySet()));
+
+        if (failure == null) {
+            if (U.isLocalNodeCoordinator(ctx.discovery()))
                 ctx.cache().context().consistentCutMgr().scheduleConsistentCut();
 
             finishProcess(reqId, null);
@@ -1383,6 +1478,9 @@ public class SnapshotRestoreProcess {
         /** Snapshot directory path. */
         private final String snpPath;
 
+        /** Snapshot directory path. */
+        private final Collection<ConsistentCutVersion> cutVers;
+
         /** Baseline discovery cache for node IDs that must be alive to complete the operation.*/
         private final DiscoCache discoCache;
 
@@ -1433,6 +1531,7 @@ public class SnapshotRestoreProcess {
             opNodeId = null;
             discoCache = null;
             snpPath = null;
+            cutVers = null;
         }
 
         /**
@@ -1445,6 +1544,7 @@ public class SnapshotRestoreProcess {
             snpName = req.snapshotName();
             snpPath = req.snapshotPath();
             opNodeId = req.operationalNodeId();
+            cutVers = req.cutVersions();
             startTime = U.currentTimeMillis();
 
             this.discoCache = discoCache;

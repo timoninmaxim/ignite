@@ -37,6 +37,7 @@ import org.apache.ignite.internal.pagemem.FullPageId;
 import org.apache.ignite.internal.pagemem.wal.record.CacheState;
 import org.apache.ignite.internal.pagemem.wal.record.CheckpointRecord;
 import org.apache.ignite.internal.pagemem.wal.record.ConsistentCutFinishRecord;
+import org.apache.ignite.internal.pagemem.wal.record.ConsistentCutRecoveryRecord;
 import org.apache.ignite.internal.pagemem.wal.record.ConsistentCutStartRecord;
 import org.apache.ignite.internal.pagemem.wal.record.DataEntry;
 import org.apache.ignite.internal.pagemem.wal.record.DataRecord;
@@ -161,10 +162,7 @@ public class RecordDataV1Serializer implements RecordDataSerializer {
     private TxRecordSerializer txRecordSerializer;
 
     /** */
-    private ConsistentCutStartRecordSerializer cutStartRecordSerializer;
-
-    /** */
-    private ConsistentCutFinishRecordSerializer cutFinishRecordSerializer;
+    private ConsistentCutRecordsSerializer consistentCutSerializer;
 
     /** Encryption SPI instance. */
     private final EncryptionSpi encSpi;
@@ -187,8 +185,7 @@ public class RecordDataV1Serializer implements RecordDataSerializer {
     public RecordDataV1Serializer(GridCacheSharedContext cctx) {
         this.cctx = cctx;
         this.txRecordSerializer = new TxRecordSerializer();
-        this.cutStartRecordSerializer = new ConsistentCutStartRecordSerializer();
-        this.cutFinishRecordSerializer = new ConsistentCutFinishRecordSerializer();
+        this.consistentCutSerializer = new ConsistentCutRecordsSerializer();
         this.co = cctx.kernalContext().cacheObjects();
         this.pageSize = cctx.database().pageSize();
         this.encSpi = cctx.gridConfig().getEncryptionSpi();
@@ -567,10 +564,13 @@ public class RecordDataV1Serializer implements RecordDataSerializer {
                 return 4 + ((ClusterSnapshotRecord)record).clusterSnapshotName().getBytes().length;
 
             case CONSISTENT_CUT_START_RECORD:
-                return cutStartRecordSerializer.size((ConsistentCutStartRecord)record);
+                return consistentCutSerializer.sizeStart((ConsistentCutStartRecord)record);
 
             case CONSISTENT_CUT_FINISH_RECORD:
-                return cutFinishRecordSerializer.size((ConsistentCutFinishRecord)record);
+                return consistentCutSerializer.sizeFinish((ConsistentCutFinishRecord)record);
+
+            case CONSISTENT_CUT_RECOVERY_RECORD:
+                return consistentCutSerializer.sizeRecovery((ConsistentCutRecoveryRecord)record);
 
             default:
                 throw new UnsupportedOperationException("Type: " + record.type());
@@ -1310,12 +1310,17 @@ public class RecordDataV1Serializer implements RecordDataSerializer {
                 break;
 
             case CONSISTENT_CUT_START_RECORD:
-                res = cutStartRecordSerializer.read(in);
+                res = consistentCutSerializer.readStart(in);
 
                 break;
 
             case CONSISTENT_CUT_FINISH_RECORD:
-                res = cutFinishRecordSerializer.read(in);
+                res = consistentCutSerializer.readFinish(in);
+
+                break;
+
+            case CONSISTENT_CUT_RECOVERY_RECORD:
+                res = consistentCutSerializer.readRecovery(in);
 
                 break;
 
@@ -1965,12 +1970,17 @@ public class RecordDataV1Serializer implements RecordDataSerializer {
                 break;
 
             case CONSISTENT_CUT_START_RECORD:
-                cutStartRecordSerializer.write((ConsistentCutStartRecord)rec, buf);
+                consistentCutSerializer.writeStart((ConsistentCutStartRecord)rec, buf);
 
                 break;
 
             case CONSISTENT_CUT_FINISH_RECORD:
-                cutFinishRecordSerializer.write((ConsistentCutFinishRecord)rec, buf);
+                consistentCutSerializer.writeFinish((ConsistentCutFinishRecord)rec, buf);
+
+                break;
+
+            case CONSISTENT_CUT_RECOVERY_RECORD:
+                consistentCutSerializer.writeRecovery((ConsistentCutRecoveryRecord)rec, buf);
 
                 break;
 

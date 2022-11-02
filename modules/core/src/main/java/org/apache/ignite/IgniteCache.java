@@ -160,9 +160,9 @@ public interface IgniteCache<K, V> extends javax.cache.Cache<K, V>, IgniteAsyncS
      *  <li>For transactional caches, values will be repaired:
      *  <ul>
      *      <li>automatically for transactions that have {@link TransactionConcurrency#OPTIMISTIC} concurrency mode
-     *          or {@link TransactionIsolation#READ_COMMITTED} isolation level</li>
+     *          or {@link TransactionIsolation#TED} isolation level</li>
      *      <li>at commit() phase for transactions that have {@link TransactionConcurrency#PESSIMISTIC} concurrency mode
-     *          and isolation level other than {@link TransactionIsolation#READ_COMMITTED}</li>
+     *          and isolation level other than {@link TransactionIsolation#TED}</li>
      *  </ul>
      *  Warning:
      *  <p>

@@ -25,6 +25,7 @@ import java.util.function.Supplier;
 import org.apache.ignite.internal.pagemem.FullPageId;
 import org.apache.ignite.internal.pagemem.wal.record.CheckpointRecord;
 import org.apache.ignite.internal.pagemem.wal.record.ConsistentCutFinishRecord;
+import org.apache.ignite.internal.pagemem.wal.record.ConsistentCutRecoveryRecord;
 import org.apache.ignite.internal.pagemem.wal.record.ConsistentCutStartRecord;
 import org.apache.ignite.internal.pagemem.wal.record.DataRecord;
 import org.apache.ignite.internal.pagemem.wal.record.ExchangeRecord;
@@ -117,6 +118,7 @@ import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType
 import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.CLUSTER_SNAPSHOT;
 import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.CONSISTENT_CUT;
 import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.CONSISTENT_CUT_FINISH_RECORD;
+import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.CONSISTENT_CUT_RECOVERY_RECORD;
 import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.CONSISTENT_CUT_START_RECORD;
 import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.DATA_PAGE_INSERT_FRAGMENT_RECORD;
 import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.DATA_PAGE_INSERT_RECORD;
@@ -266,6 +268,7 @@ public class RecordUtils {
         put(CLUSTER_SNAPSHOT, RecordUtils::buildClusterSnapshotRecord);
         put(CONSISTENT_CUT_START_RECORD, RecordUtils::buildConsistentCutStartRecord);
         put(CONSISTENT_CUT_FINISH_RECORD, RecordUtils::buildConsistentCutFinishRecord);
+        put(CONSISTENT_CUT_RECOVERY_RECORD, RecordUtils::buildConsistentCutFinishRecord);
     }
 
     /** */
@@ -648,4 +651,10 @@ public class RecordUtils {
         return new ConsistentCutFinishRecord(
             F.asSet(new GridCacheVersion()), F.asSet(new GridCacheVersion()));
     }
+
+    /** **/
+    public static ConsistentCutRecoveryRecord buildConsistentCutRecoveryRecord() {
+        return new ConsistentCutRecoveryRecord(new ConsistentCutVersion(1204L, AffinityTopologyVersion.NONE));
+    }
+
 }

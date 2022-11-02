@@ -112,6 +112,9 @@ import org.apache.ignite.internal.processors.cache.GridCacheSharedContext;
 import org.apache.ignite.internal.processors.cache.GridCacheSharedManagerAdapter;
 import org.apache.ignite.internal.processors.cache.GridLocalConfigManager;
 import org.apache.ignite.internal.processors.cache.StoredCacheData;
+import org.apache.ignite.internal.processors.cache.consistentcut.recovery.FindRecoveryConsistentSegmentsTask;
+import org.apache.ignite.internal.processors.cache.consistentcut.recovery.FindRecoveryConsistentSegmentsTaskArg;
+import org.apache.ignite.internal.processors.cache.consistentcut.recovery.RecoveryConsistentSegments;
 import org.apache.ignite.internal.processors.cache.distributed.dht.preloader.GridDhtPartitionsExchangeFuture;
 import org.apache.ignite.internal.processors.cache.distributed.dht.preloader.PartitionsExchangeAware;
 import org.apache.ignite.internal.processors.cache.persistence.CacheDataRow;
@@ -1327,6 +1330,61 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
     }
 
     /**
+     * Checks snapshot and WAL archive files for PITR.
+     */
+    public IgniteInternalFuture<SnapshotVerifyResult> checkSnapsnotAndWal(
+        String name,
+        @Nullable String snpPath,
+        @Nullable Collection<String> grps,
+        boolean includeCustomHandlers,
+        boolean restoreWalArcives
+    ) {
+        GridFutureAdapter<SnapshotVerifyResult> res = new GridFutureAdapter<>();
+
+        IgniteInternalFuture<SnapshotPartitionsVerifyTaskResult> checkSnp = checkSnapshot(name, snpPath, grps, true);
+
+        GridKernalContext kctx0 = cctx.kernalContext();
+
+        if (!restoreWalArcives) {
+            checkSnp.listen(snp -> {
+                if (snp.error() != null)
+                    res.onDone(snp.error());
+                else
+                    res.onDone(new SnapshotVerifyResult(snp.result(), null));
+            });
+
+            return res;
+        }
+
+        IgniteInternalFuture<RecoveryConsistentSegments> recoveryCutFut = kctx0.task()
+            .execute(FindRecoveryConsistentSegmentsTask.class, new FindRecoveryConsistentSegmentsTaskArg(name));
+
+        recoveryCutFut.listen(cuts -> {
+            if (cuts.error() != null) {
+                res.onDone(new SnapshotVerifyResult(
+                    Collections.singletonMap(cctx.localNode(), new IgniteCheckedException(cuts.error()))));
+
+                return;
+            }
+
+            if (cuts.result().exceptions() != null) {
+                res.onDone(new SnapshotVerifyResult(cuts.result().exceptions()));
+
+                return;
+            }
+
+            checkSnp.listen(snpChk -> {
+                if (snpChk.error() != null)
+                    res.onDone(snpChk.error());
+                else
+                    res.onDone(new SnapshotVerifyResult(snpChk.result(), cuts.result().cutVersions()));
+            });
+        });
+
+        return res;
+    }
+
+    /**
      * @param snpName Snapshot name.
      * @param folderName The name of a directory for the cache group.
      * @param names Cache group names to filter.
@@ -1537,7 +1595,7 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
                 new HashSet<>(F.viewReadOnly(srvNodes, F.node2id(), (node) -> CU.baselineNode(node, clusterState)));
 
             startSnpProc.start(snpFut0.rqId,
-                new SnapshotOperationRequest(snpFut0.rqId, cctx.localNodeId(), name, snpPath, grps, bltNodeIds));
+                new SnapshotOperationRequest(snpFut0.rqId, cctx.localNodeId(), name, snpPath, null, grps, bltNodeIds));
 
             String msg = "Cluster-wide snapshot operation started [snpName=" + name + ", grps=" + grps + ']';
 
@@ -1573,13 +1631,23 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
      * @return Future which will be completed when restore operation finished.
      */
     public IgniteFuture<Void> restoreSnapshot(String name, @Nullable String snpPath, @Nullable Collection<String> grpNames) {
+        return restoreSnapshot(name, snpPath, null, false);
+    }
+
+    /** */
+    public IgniteFuture<Void> restoreSnapshot(
+        String name,
+        @Nullable String snpPath,
+        @Nullable Collection<String> grpNames,
+        boolean restoreWalArchives
+    ) {
         A.notNullOrEmpty(name, "Snapshot name cannot be null or empty.");
         A.ensure(U.alphanumericUnderscore(name), "Snapshot name must satisfy the following name pattern: a-zA-Z0-9_");
         A.ensure(grpNames == null || !grpNames.isEmpty(), "List of cache group names cannot be empty.");
 
         cctx.kernalContext().security().authorize(ADMIN_SNAPSHOT);
 
-        return restoreCacheGrpProc.start(name, snpPath, grpNames);
+        return restoreCacheGrpProc.start(name, snpPath, grpNames, restoreWalArchives);
     }
 
     /** {@inheritDoc} */

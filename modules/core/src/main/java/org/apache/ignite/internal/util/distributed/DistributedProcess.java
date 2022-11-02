@@ -465,6 +465,11 @@ public class DistributedProcess<I extends Serializable, R extends Serializable> 
         /**
          * Cache group restore rollback phase.
          */
-        RESTORE_CACHE_GROUP_SNAPSHOT_ROLLBACK
+        RESTORE_CACHE_GROUP_SNAPSHOT_ROLLBACK,
+
+        /**
+         * Cache group restore cache start phase.
+         */
+        RESTORE_CACHE_GROUP_SNAPSHOT_WAL_RECOVERY
     }
 }

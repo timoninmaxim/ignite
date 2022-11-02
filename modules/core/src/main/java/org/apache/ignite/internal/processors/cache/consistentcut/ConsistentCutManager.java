@@ -264,8 +264,8 @@ public class ConsistentCutManager extends GridCacheSharedManagerAdapter implemen
                     try {
                         cut.init(rcvCutVer);
 
-                        if (log.isDebugEnabled())
-                            log.debug("Prepared Consistent Cut: " + newCutState);
+                        if (log.isInfoEnabled())
+                            log.info("Prepared Consistent Cut: " + newCutState);
                     }
                     catch (IgniteCheckedException e) {
                         U.error(log, "Failed to handle Consistent Cut version.", e);
@@ -282,6 +282,13 @@ public class ConsistentCutManager extends GridCacheSharedManagerAdapter implemen
      */
     public ConsistentCutVersion cutVersion() {
         return CONSITENT_CUT_STATE.get(this).version();
+    }
+
+    /**
+     * @param cutVer Initial Consistent Cut Version.
+     */
+    public void cutVersion(ConsistentCutVersion cutVer) {
+        CONSITENT_CUT_STATE.set(this, new ConsistentCutState(newCutVersion(cutVer.version()), null));
     }
 
     /** Creates new Consistent Cut instance. */
@@ -320,10 +327,10 @@ public class ConsistentCutManager extends GridCacheSharedManagerAdapter implemen
                 if (log.isDebugEnabled())
                     log.debug("Send " + msg + " from " + cctx.localNodeId());
 
-                cctx.discovery().topologyFuture(cutVer.topVer().topologyVersion())
+                cctx.discovery().topologyFuture(cutVer.topologyVersion().topologyVersion())
                     .listen((tv) -> {
                         try {
-                            UUID crd = cctx.discovery().discoCache(cutVer.topVer()).oldestAliveServerNode().id();
+                            UUID crd = cctx.discovery().discoCache(cutVer.topologyVersion()).oldestAliveServerNode().id();
 
                             cctx.kernalContext().io().sendToGridTopic(crd, TOPIC_CONSISTENT_CUT, msg, SYSTEM_POOL);
                         }
@@ -359,8 +366,8 @@ public class ConsistentCutManager extends GridCacheSharedManagerAdapter implemen
 
         ConsistentCutVersion cutVer = newCutVersion(prevCutVer.version() + 1);
 
-        if (log.isDebugEnabled())
-            log.debug("Start Consistent Cut, version = " + cutVer + ", reason='" + reason + "'");
+        if (log.isInfoEnabled())
+            log.info("Start Consistent Cut, version = " + cutVer + ", reason='" + reason + "'");
 
         Message msg = new ConsistentCutStartRequest(cutVer);
 
@@ -393,8 +400,8 @@ public class ConsistentCutManager extends GridCacheSharedManagerAdapter implemen
         if (awaitNodes.isEmpty())
             notFinishedSrvNodes = null;
 
-        if (log.isDebugEnabled())
-            log.debug("Received ConsistentCutReadyResponse from node " + nodeId + ": " + msg + " . Wait " + awaitNodes);
+        if (log.isInfoEnabled())
+            log.info("Received ConsistentCutReadyResponse from node " + nodeId + ": " + msg + " . Wait " + awaitNodes);
     }
 
     /**

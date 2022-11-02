@@ -1184,8 +1184,10 @@ public class DataStorageConfiguration implements Serializable {
     /**
      * @param walCompactionLevel New ZIP level to WAL compaction.
      */
-    public void setWalCompactionLevel(int walCompactionLevel) {
+    public DataStorageConfiguration setWalCompactionLevel(int walCompactionLevel) {
         this.walCompactionLevel = walCompactionLevel;
+
+        return this;
     }
 
     /**

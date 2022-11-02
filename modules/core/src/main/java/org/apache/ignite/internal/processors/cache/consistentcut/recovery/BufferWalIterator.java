@@ -15,24 +15,24 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.internal.processors.cache.consistentcut;
+package org.apache.ignite.internal.processors.cache.consistentcut.recovery;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.internal.pagemem.wal.IgniteWriteAheadLogManager;
 import org.apache.ignite.internal.pagemem.wal.WALIterator;
+import org.apache.ignite.internal.pagemem.wal.record.DataEntry;
 import org.apache.ignite.internal.pagemem.wal.record.DataRecord;
 import org.apache.ignite.internal.pagemem.wal.record.TxRecord;
 import org.apache.ignite.internal.pagemem.wal.record.WALRecord;
 import org.apache.ignite.internal.processors.cache.persistence.wal.WALPointer;
+import org.apache.ignite.internal.processors.cache.version.GridCacheVersion;
 import org.apache.ignite.internal.util.lang.GridIteratorAdapter;
 import org.apache.ignite.lang.IgniteBiTuple;
-import org.apache.ignite.lang.IgniteUuid;
+import org.apache.ignite.lang.IgnitePredicate;
 
 /**
  * Iterator wrapper over WALIterator {@link #walIt} that stores read records in buffer to re-read them later.
@@ -40,7 +40,10 @@ import org.apache.ignite.lang.IgniteUuid;
  * Consistent Cut algorithm requires to re-read some parts of WAL multiple times, then usage of the buffer is cheaper
  * than frequent use of {@link IgniteWriteAheadLogManager#replay(WALPointer)}.
  */
-class BufferWalIterator extends GridIteratorAdapter<IgniteBiTuple<WALPointer, WALRecord>> implements WALIterator {
+public class BufferWalIterator extends GridIteratorAdapter<IgniteBiTuple<WALPointer, WALRecord>> implements WALIterator {
+    /** */
+    private static final long serialVersionUID = 0L;
+
     /** Buffer to store read items from {@link #walIt} to re-read them at future. */
     private List<IgniteBiTuple<WALPointer, WALRecord>> buf;
 
@@ -56,11 +59,14 @@ class BufferWalIterator extends GridIteratorAdapter<IgniteBiTuple<WALPointer, WA
     /** Current record to read from the buffer. */
     private IgniteBiTuple<WALPointer, WALRecord> curBufItem;
 
-    /** Collection of transactions to skip while read them from the buffer. */
-    private Set<IgniteUuid> skipTx;
+    /** Filters records by transaction version. */
+    private IgnitePredicate<GridCacheVersion> txVerFilter;
+
+    /** Last delivered pointer from buffer or WAL. */
+    private WALPointer lastReadPtr;
 
     /** */
-    BufferWalIterator(WALIterator walIt) {
+    public BufferWalIterator(WALIterator walIt) {
         this.walIt = walIt;
     }
 
@@ -75,12 +81,16 @@ class BufferWalIterator extends GridIteratorAdapter<IgniteBiTuple<WALPointer, WA
         if (curBufItem != null) {
             IgniteBiTuple<WALPointer, WALRecord> next = curBufItem;
 
+            lastReadPtr = curBufItem.get1();
+
             curBufItem = null;
 
             return next;
         }
 
         IgniteBiTuple<WALPointer, WALRecord> rec = walIt.next();
+
+        lastReadPtr = rec.get1();
 
         if (mode == BufferedMode.STORE)
             buf.add(rec);
@@ -101,56 +111,62 @@ class BufferWalIterator extends GridIteratorAdapter<IgniteBiTuple<WALPointer, WA
             if (mode == BufferedMode.CLEAN)
                 buf.remove(0);
 
-            if (skipReadRecordFromBuffer(curBufItem.getValue()))
+            if (!walRecordFilter(curBufItem.getValue()))
                 continue;
 
             break;
         }
 
-        if (curBufItem == null)
-            cleanBuf();
+        if (curBufItem == null) {
+            bufIt = null;
+
+            if (mode == BufferedMode.CLEAN)
+                buf = null;
+        }
 
         return curBufItem != null;
     }
 
     /** */
-    private void cleanBuf() {
-        bufIt = null;
-
-        if (mode == BufferedMode.CLEAN)
-            buf = null;
-    }
-
-    /** */
-    void mode(BufferedMode mode) {
+    public void mode(BufferedMode mode) {
         this.mode = mode;
 
         if (mode == BufferedMode.STORE && buf == null)
             buf = new ArrayList<>();
     }
 
+    /** */
+    public void txVerFilter(IgnitePredicate<GridCacheVersion> filter) {
+        txVerFilter = filter;
+    }
+
+    /** Applies {@link #txVerFilter} for WAL records. */
+    private boolean walRecordFilter(WALRecord rec) {
+        if (txVerFilter == null)
+            return true;
+
+        if (rec.type() == WALRecord.RecordType.DATA_RECORD_V2) {
+            DataRecord dataRec = (DataRecord)rec;
+
+            DataEntry entry = dataRec.writeEntries().get(0);
+
+            return txVerFilter.apply(entry.nearXidVersion());
+        }
+        else if (rec.type() == WALRecord.RecordType.TX_RECORD)
+            return txVerFilter.apply(((TxRecord)rec).nearXidVersion());
+
+        return true;
+    }
+
     /** Reset buffer before read from it. */
-    void resetBuffer() {
+    public void resetBuffer() {
         if (buf != null)
             bufIt = new ArrayList<>(buf).iterator();
     }
 
     /** */
-    void skipTxInBuffer(Set<IgniteUuid> skipTx) {
-        if (this.skipTx != null)
-            this.skipTx.addAll(skipTx);
-        else
-            this.skipTx = new HashSet<>(skipTx);
-    }
-
-    /** */
-    List<IgniteBiTuple<WALPointer, WALRecord>> buffer() {
+    public List<IgniteBiTuple<WALPointer, WALRecord>> buffer() {
         return buf;
-    }
-
-    /** */
-    Set<IgniteUuid> skipTx() {
-        return skipTx;
     }
 
     /** {@inheritDoc} */
@@ -162,47 +178,22 @@ class BufferWalIterator extends GridIteratorAdapter<IgniteBiTuple<WALPointer, WA
     }
 
     /** {@inheritDoc} */
-    @Override public boolean isClosed() {
-        return !bufIt.hasNext() && walIt.isClosed();
-    }
-
-    /** */
-    private boolean skipReadRecordFromBuffer(WALRecord rec) {
-        if (rec instanceof DataRecord && skipDataRecord((DataRecord)rec))
-            return true;
-
-        if (rec instanceof TxRecord && skipTxRecord((TxRecord)rec))
-            return true;
-
-        return false;
-    }
-
-    /** */
-    private boolean skipDataRecord(DataRecord r) {
-        IgniteUuid tx = r.writeEntries().get(0).nearXidVersion().asIgniteUuid();
-
-        return skipTx != null && skipTx.contains(tx);
-    }
-
-    /** */
-    private boolean skipTxRecord(TxRecord r) {
-        return skipTx != null && skipTx.contains(r.nearXidVersion().asIgniteUuid());
-    }
-
-    /** {@inheritDoc} */
     @Override public Optional<WALPointer> lastRead() {
-        assert false : "Should not be invoked";
-
-        return Optional.empty();
+        return Optional.ofNullable(lastReadPtr);
     }
 
     /** {@inheritDoc} */
     @Override public void removeX() {
-        assert false : "Should not be invoked";
+        throw new IllegalStateException("Should not be invoked");
+    }
+
+    /** {@inheritDoc} */
+    @Override public boolean isClosed() {
+        throw new IllegalStateException("Should not be invoked");
     }
 
     /** Buffer modes. */
-    enum BufferedMode {
+    public enum BufferedMode {
         /** Do not store new read records from WAL. */
         CLEAN,
 

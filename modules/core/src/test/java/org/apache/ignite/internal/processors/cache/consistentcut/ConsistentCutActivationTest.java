@@ -37,6 +37,18 @@ public class ConsistentCutActivationTest extends AbstractConsistentCutBlockingTe
         }
     }
 
+
+    @Test
+    public void test() throws Exception {
+        stopGrid(1);
+
+        awaitPartitionMapExchange();
+
+        startGrid(1);
+
+        awaitPartitionMapExchange();
+    }
+
     /** */
     @Test
     public void testConsistentCutDisabledByDefault() {
@@ -161,6 +173,8 @@ public class ConsistentCutActivationTest extends AbstractConsistentCutBlockingTe
 
         // Ensure that new coordinator has old version of Consistent Cut.
         assertEquals(blkCutVer - 1, TestConsistentCutManager.cutMgr(grid(1)).cutVersion().version());
+
+        log.info("BLOCK VERSION " + (blkCutVer - 1));
 
         assertTrue(U.isLocalNodeCoordinator(grid(1).context().discovery()));
 

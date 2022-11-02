@@ -288,7 +288,10 @@ public abstract class WALRecord {
         CONSISTENT_CUT_START_RECORD(76, LOGICAL),
 
         /** Consistent Cut Finish record. */
-        CONSISTENT_CUT_FINISH_RECORD(77, LOGICAL);
+        CONSISTENT_CUT_FINISH_RECORD(77, LOGICAL),
+
+        /** Consistent Cut Finish record. */
+        CONSISTENT_CUT_RECOVERY_RECORD(78, LOGICAL);
 
         /** Index for serialization. Should be consistent throughout all versions. */
         private final int idx;

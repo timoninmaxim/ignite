@@ -60,7 +60,7 @@ public class ConsistentCutVersion implements Message, Comparable<ConsistentCutVe
     }
 
     /** */
-    public AffinityTopologyVersion topVer() {
+    public AffinityTopologyVersion topologyVersion() {
         return topVer;
     }
 

@@ -24,6 +24,7 @@ import org.apache.ignite.internal.pagemem.wal.record.RolloverType;
 import org.apache.ignite.internal.pagemem.wal.record.WALRecord;
 import org.apache.ignite.internal.processors.cache.GridCacheSharedManager;
 import org.apache.ignite.internal.processors.cache.persistence.StorageException;
+import org.apache.ignite.internal.processors.cache.persistence.wal.FileDescriptor;
 import org.apache.ignite.internal.processors.cache.persistence.wal.WALPointer;
 import org.apache.ignite.internal.processors.cluster.IgniteChangeGlobalStateSupport;
 import org.apache.ignite.lang.IgniteBiPredicate;
@@ -54,7 +55,7 @@ public interface IgniteWriteAheadLogManager extends GridCacheSharedManager, Igni
      *
      * @throws IgniteCheckedException If fails.
      */
-    public void resumeLogging(WALPointer lastWrittenPtr) throws IgniteCheckedException;
+    public void resumeLogging(WALPointer lastWrittenPtr, boolean ptrArchived) throws IgniteCheckedException;
 
     /**
      * Appends the given log entry to the write-ahead log.
@@ -177,6 +178,11 @@ public interface IgniteWriteAheadLogManager extends GridCacheSharedManager, Igni
      * @return Total number of segments in the WAL archive.
      */
     public int walArchiveSegments();
+
+    /**
+     * @return Total number of segments in the WAL archive.
+     */
+    public FileDescriptor[] walArchiveFiles();
 
     /**
      * @return Last archived segment index.

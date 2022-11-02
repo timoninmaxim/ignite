@@ -46,6 +46,7 @@ import org.apache.ignite.failure.StopNodeFailureHandler;
 import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.TestRecordingCommunicationSpi;
+import org.apache.ignite.internal.processors.cache.distributed.near.GridNearTxFinishRequest;
 import org.apache.ignite.internal.processors.cache.distributed.near.GridNearTxPrepareRequest;
 import org.apache.ignite.internal.processors.cache.persistence.file.FileIO;
 import org.apache.ignite.internal.processors.cache.persistence.file.FileIODecorator;
@@ -130,12 +131,12 @@ public class IgniteLogicalRecoveryWithParamsTest extends GridCommonAbstractTest 
     @Parameterized.Parameters(name = "nodesCnt={0}, singleNodeTx={1}, backups={2}")
     public static Collection<Object[]> runConfig() {
         return Arrays.asList(new Object[][] {
-            {1, true, 0},
-            {1, true, 1},
-            {1, false, 0},
-            {1, false, 1},
-            {2, true, 0},
-            {2, true, 1},
+//            {1, true, 0},
+//            {1, true, 1},
+//            {1, false, 0},
+//            {1, false, 1},
+//            {2, true, 0},
+//            {2, true, 1},
             //{2, false, 0}, such case is not fixed by now
             {2, false, 1},
         });
@@ -191,7 +192,7 @@ public class IgniteLogicalRecoveryWithParamsTest extends GridCommonAbstractTest 
 
             forceCheckpoint();
 
-            nearComm.blockMessages((node, msg) -> msg instanceof GridNearTxPrepareRequest);
+            nearComm.blockMessages((node, msg) -> msg instanceof GridNearTxFinishRequest);
 
             if (singleNodeTx)
                 keys = primaryKeys(srv.cache(cacheName), itmsCount, 0);

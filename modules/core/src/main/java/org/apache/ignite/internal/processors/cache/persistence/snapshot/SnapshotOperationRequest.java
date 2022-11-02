@@ -21,6 +21,7 @@ import java.io.Serializable;
 import java.util.Collection;
 import java.util.Set;
 import java.util.UUID;
+import org.apache.ignite.internal.processors.cache.consistentcut.ConsistentCutVersion;
 import org.apache.ignite.internal.util.distributed.DistributedProcess;
 import org.apache.ignite.internal.util.distributed.DistributedProcess.DistributedProcessType;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
@@ -42,6 +43,9 @@ public class SnapshotOperationRequest implements Serializable {
 
     /** Snapshot directory path. */
     private final String snpPath;
+
+    /** Snapshot directory path. */
+    private final Collection<ConsistentCutVersion> cutVers;
 
     /** Baseline node IDs that must be alive to complete the operation. */
     @GridToStringInclude
@@ -73,6 +77,7 @@ public class SnapshotOperationRequest implements Serializable {
         UUID opNodeId,
         String snpName,
         String snpPath,
+        @Nullable Collection<ConsistentCutVersion> cutVers,
         @Nullable Collection<String> grps,
         Set<UUID> nodes
     ) {
@@ -82,6 +87,7 @@ public class SnapshotOperationRequest implements Serializable {
         this.grps = grps;
         this.nodes = nodes;
         this.snpPath = snpPath;
+        this.cutVers = cutVers;
     }
 
     /**
@@ -103,6 +109,13 @@ public class SnapshotOperationRequest implements Serializable {
      */
     public String snapshotPath() {
         return snpPath;
+    }
+
+    /**
+     * @return Snapshot directory path.
+     */
+    public Collection<ConsistentCutVersion> cutVersions() {
+        return cutVers;
     }
 
     /**
