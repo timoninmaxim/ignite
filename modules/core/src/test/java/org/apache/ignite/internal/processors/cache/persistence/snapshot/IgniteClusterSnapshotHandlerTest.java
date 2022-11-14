@@ -399,7 +399,7 @@ public class IgniteClusterSnapshotHandlerTest extends IgniteClusterSnapshotResto
             ignite.destroyCache(DEFAULT_CACHE_NAME);
             awaitPartitionMapExchange();
 
-            snpMgr.restoreSnapshot(snpName, snpDir.getAbsolutePath(), null).get(TIMEOUT);
+            snpMgr.restoreSnapshot(snpName, snpDir.getAbsolutePath(), null, 0).get(TIMEOUT);
         }
         finally {
             U.delete(snpDir);

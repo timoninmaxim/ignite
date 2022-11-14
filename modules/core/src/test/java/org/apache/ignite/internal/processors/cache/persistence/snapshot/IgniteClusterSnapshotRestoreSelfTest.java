@@ -155,7 +155,7 @@ public class IgniteClusterSnapshotRestoreSelfTest extends IgniteClusterSnapshotR
             ignite.destroyCache(DEFAULT_CACHE_NAME);
             awaitPartitionMapExchange();
 
-            ignite.context().cache().context().snapshotMgr().restoreSnapshot(SNAPSHOT_NAME, snpDir.getAbsolutePath(), null)
+            ignite.context().cache().context().snapshotMgr().restoreSnapshot(SNAPSHOT_NAME, snpDir.getAbsolutePath(), null, 0)
                 .get();
 
             IgniteCache<Object, Object> cache = ignite.cache(DEFAULT_CACHE_NAME);

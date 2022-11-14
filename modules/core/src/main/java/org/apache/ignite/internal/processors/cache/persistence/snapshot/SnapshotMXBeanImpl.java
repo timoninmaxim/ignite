@@ -79,7 +79,7 @@ public class SnapshotMXBeanImpl implements SnapshotMXBean {
         Set<String> grpNamesSet = F.isEmpty(grpNames) ? null :
             Arrays.stream(grpNames.split(",")).map(String::trim).filter(s -> !s.isEmpty()).collect(Collectors.toSet());
 
-        IgniteFuture<Void> fut = mgr.restoreSnapshot(name, F.isEmpty(path) ? null : path, grpNamesSet);
+        IgniteFuture<Void> fut = mgr.restoreSnapshot(name, F.isEmpty(path) ? null : path, grpNamesSet, 0);
 
         if (fut.isDone())
             fut.get();

@@ -75,6 +75,11 @@ public class IncrementalSnapshotMetadata implements Serializable {
         this.cutPtr = cutPtr;
     }
 
+    /** */
+    public UUID requestId() {
+        return rqId;
+    }
+
     /** @return Pointer to consistent cut record. */
     public WALPointer cutPointer() {
         return cutPtr;

@@ -93,6 +93,7 @@ import static org.apache.ignite.internal.util.distributed.DistributedProcess.Dis
 import static org.apache.ignite.internal.util.distributed.DistributedProcess.DistributedProcessType.RESTORE_CACHE_GROUP_SNAPSHOT_PREPARE;
 import static org.apache.ignite.internal.util.distributed.DistributedProcess.DistributedProcessType.RESTORE_CACHE_GROUP_SNAPSHOT_ROLLBACK;
 import static org.apache.ignite.internal.util.distributed.DistributedProcess.DistributedProcessType.RESTORE_CACHE_GROUP_SNAPSHOT_START;
+import static org.apache.ignite.internal.util.distributed.DistributedProcess.DistributedProcessType.RESTORE_INCREMENTAL_SNAPSHOT_START;
 
 /**
  * Distributed process to restore cache group from the snapshot.
@@ -128,6 +129,9 @@ public class SnapshotRestoreProcess {
     /** Cache group restore rollback phase. */
     private final DistributedProcess<UUID, Boolean> rollbackRestoreProc;
 
+    /** Incremental snapshot restore phase. */
+    private final DistributedProcess<UUID, Boolean> incSnpRecoveryProc;
+
     /** Logger. */
     private final IgniteLogger log;
 
@@ -156,6 +160,9 @@ public class SnapshotRestoreProcess {
 
         cacheStartProc = new DistributedProcess<>(
             ctx, RESTORE_CACHE_GROUP_SNAPSHOT_START, this::cacheStart, this::finishCacheStart);
+
+        incSnpRecoveryProc = new DistributedProcess<>(
+            ctx, RESTORE_INCREMENTAL_SNAPSHOT_START, this::incrementalSnapshotRecovery, this::finishIncrementalSnapshotRecovery);
 
         rollbackRestoreProc = new DistributedProcess<>(
             ctx, RESTORE_CACHE_GROUP_SNAPSHOT_ROLLBACK, this::rollback, this::finishRollback);
@@ -209,9 +216,15 @@ public class SnapshotRestoreProcess {
      * @param snpName Snapshot name.
      * @param snpPath Snapshot directory path.
      * @param cacheGrpNames Cache groups to be restored or {@code null} to restore all cache groups from the snapshot.
+     * @param incIdx Index of incremental snapshot, {@code 0} if restore full snapshot only.
      * @return Future that will be completed when the restore operation is complete and the cache groups are started.
      */
-    public IgniteFutureImpl<Void> start(String snpName, @Nullable String snpPath, @Nullable Collection<String> cacheGrpNames) {
+    public IgniteFutureImpl<Void> start(
+        String snpName,
+        @Nullable String snpPath,
+        @Nullable Collection<String> cacheGrpNames,
+        long incIdx
+    ) {
         IgniteSnapshotManager snpMgr = ctx.cache().context().snapshotMgr();
         ClusterSnapshotFuture fut0;
 
@@ -270,7 +283,8 @@ public class SnapshotRestoreProcess {
         });
 
         String msg = "Cluster-wide snapshot restore operation started [reqId=" + fut0.rqId + ", snpName=" + snpName +
-            (cacheGrpNames == null ? "" : ", caches=" + cacheGrpNames) + ']';
+            (cacheGrpNames == null ? "" : ", caches=" + cacheGrpNames) +
+            (incIdx > 0 ? ", incrementalIndex=" + incIdx : "") + ']';
 
         if (log.isInfoEnabled())
             log.info(msg);
@@ -339,7 +353,7 @@ public class SnapshotRestoreProcess {
                 cacheGrpNames,
                 new HashSet<>(bltNodes),
                 false,
-                -1
+                incIdx
             );
 
             prepareRestoreProc.start(req.requestId(), req);
@@ -1162,6 +1176,68 @@ public class SnapshotRestoreProcess {
             orElse(checkNodeLeft(opCtx0.nodes(), res.keySet()));
 
         if (failure == null) {
+            if (opCtx0.incIdx > 0) {
+                if (U.isLocalNodeCoordinator(ctx.discovery()))
+                    incSnpRecoveryProc.start(reqId, reqId);
+
+                return;
+            }
+
+            // After recovery on ClusterSnapshot only.
+            finishProcess(reqId, null);
+
+            return;
+        }
+
+        opCtx0.err.compareAndSet(null, failure);
+
+        if (U.isLocalNodeCoordinator(ctx.discovery()))
+            rollbackRestoreProc.start(reqId, reqId);
+    }
+
+    /**
+     * @param reqId Request ID.
+     * @return Result future.
+     */
+    private IgniteInternalFuture<Boolean> incrementalSnapshotRecovery(UUID reqId) {
+        if (ctx.clientNode() || !CU.baselineNode(ctx.discovery().localNode(), ctx.state().clusterState()))
+            return new GridFinishedFuture<>();
+
+        SnapshotRestoreContext opCtx0 = opCtx;
+
+        Throwable err = opCtx0.err.get();
+
+        if (err != null)
+            return new GridFinishedFuture<>(err);
+
+        Collection<StoredCacheData> ccfgs = opCtx0.cfgs.values();
+
+        if (log.isInfoEnabled()) {
+            log.info("Starting Incremental snapshot recovery process " +
+                "[reqId=" + opCtx0.reqId + ", snapshot=" + opCtx0.snpName +
+                ", caches=" + F.viewReadOnly(ccfgs, c -> c.config().getName()) +
+                ", incrementalIndex=" + opCtx0.incIdx + ']');
+        }
+
+        return new ConsistentCutRecovery(ctx, opCtx0.snpName, opCtx0.snpPath, opCtx0.incIdx, opCtx0.cfgs.keySet())
+            .start();
+    }
+
+    /**
+     * @param reqId Request ID.
+     * @param res Results.
+     * @param errs Errors.
+     */
+    private void finishIncrementalSnapshotRecovery(UUID reqId, Map<UUID, Boolean> res, Map<UUID, Exception> errs) {
+        if (ctx.clientNode() || !CU.baselineNode(ctx.discovery().localNode(), ctx.state().clusterState()))
+            return;
+
+        SnapshotRestoreContext opCtx0 = opCtx;
+
+        Exception failure = errs.values().stream().findFirst().
+            orElse(checkNodeLeft(opCtx0.nodes(), res.keySet()));
+
+        if (failure == null) {
             finishProcess(reqId, null);
 
             return;
@@ -1256,6 +1332,8 @@ public class SnapshotRestoreProcess {
 
                 IgniteCheckedException ex = null;
 
+                List<String> stopCaches = new ArrayList<>();
+
                 for (File cacheDir : opCtx0.dirs) {
                     File tmpCacheDir = formatTmpDirName(cacheDir);
 
@@ -1266,7 +1344,11 @@ public class SnapshotRestoreProcess {
                         ex = new IgniteCheckedException("Unable to remove temporary cache directory " + cacheDir);
                     }
 
-                    if (cacheDir.exists() && !U.delete(cacheDir)) {
+                    String cacheGrpName = FilePageStoreManager.cacheGroupName(cacheDir);
+
+                    if (ctx.cache().cacheDescriptor(cacheGrpName) != null)
+                        stopCaches.add(cacheGrpName);
+                    else if (cacheDir.exists() && !U.delete(cacheDir)) {
                         log.error("Unable to perform rollback routine completely, cannot remove cache directory " +
                             "[reqId=" + reqId + ", snapshot=" + opCtx0.snpName + ", dir=" + cacheDir + ']');
 
@@ -1276,8 +1358,23 @@ public class SnapshotRestoreProcess {
 
                 if (ex != null)
                     retFut.onDone(ex);
-                else
+                else {
+                    if (U.isLocalNodeCoordinator(ctx.discovery())) {
+                        if (!stopCaches.isEmpty()) {
+                            ctx.cache().dynamicDestroyCaches(stopCaches, false)
+                                .listen(f -> {
+                                    if (f.error() != null)
+                                        retFut.onDone(f.error());
+
+                                    retFut.onDone(true);
+                                });
+
+                            return;
+                        }
+                    }
+
                     retFut.onDone(true);
+                }
             });
         }
         catch (RejectedExecutionException e) {
@@ -1398,6 +1495,9 @@ public class SnapshotRestoreProcess {
         /** Operational node id. */
         private final UUID opNodeId;
 
+        /** */
+        private final long incIdx;
+
         /**
          * Set of restored cache groups path on local node. Collected when all cache configurations received
          * from the <tt>prepare</tt> distributed process.
@@ -1442,6 +1542,7 @@ public class SnapshotRestoreProcess {
             opNodeId = null;
             discoCache = null;
             snpPath = null;
+            incIdx = 0;
         }
 
         /**
@@ -1455,6 +1556,7 @@ public class SnapshotRestoreProcess {
             snpPath = req.snapshotPath();
             opNodeId = req.operationalNodeId();
             startTime = U.currentTimeMillis();
+            incIdx = req.incrementIndex();
 
             this.discoCache = discoCache;
             this.cfgs = cfgs;

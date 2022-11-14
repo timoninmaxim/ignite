@@ -77,7 +77,7 @@ public abstract class AbstractConsistentCutTest extends GridCommonAbstractTest {
     private final Random rnd = new Random();
 
     /** nodeIdx -> Consistent Node ID. */
-    private final List<UUID> consistentIds = new ArrayList<>();
+    protected final List<UUID> consistentIds = new ArrayList<>();
 
     /** {@inheritDoc} */
     @Override protected IgniteConfiguration getConfiguration(String instanceName) throws Exception {

@@ -951,15 +951,26 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
         if (req.incrementIndex() == 1)
             return meta.snapshotRecordPointer();
         else {
-            long prevIdx = req.incrementIndex() - 1;
-
-            IncrementalSnapshotMetadata prevIncSnpMeta = readFromFile(new File(
-                incrementalSnapshotLocalDir(req.snapshotName(), req.snapshotPath(), prevIdx),
-                incrementalSnapshotMetaFileName(prevIdx)
-            ));
-
-            return prevIncSnpMeta.cutPointer();
+            return readIncrementalSnapshotMetadata(req.snapshotName(), req.snapshotPath(), req.incrementIndex() - 1)
+                .cutPointer();
         }
+    }
+
+    /**
+     * @param snpName Full snapshot name.
+     * @param snpPath Optional path to snapshot, if differs from default.
+     * @param incIdx Index of incremental snapshot.
+     * @return Read incremental snapshot metadata.
+     */
+    public IncrementalSnapshotMetadata readIncrementalSnapshotMetadata(
+        String snpName,
+        @Nullable String snpPath,
+        long incIdx
+    ) throws IgniteCheckedException, IOException {
+        return readFromFile(new File(
+            incrementalSnapshotLocalDir(snpName, snpPath, incIdx),
+            incrementalSnapshotMetaFileName(incIdx)
+        ));
     }
 
     /**
@@ -2031,7 +2042,16 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
 
     /** {@inheritDoc} */
     @Override public IgniteFuture<Void> restoreSnapshot(String name, @Nullable Collection<String> grpNames) {
-        return restoreSnapshot(name, null, grpNames);
+        return restoreSnapshot(name, null, grpNames, 0);
+    }
+
+    /** {@inheritDoc} */
+    @Override public IgniteFuture<Void> restoreIncrementalSnapshot(
+        String name,
+        @Nullable Collection<String> grpNames,
+        long incIdx
+    ) {
+        return restoreSnapshot(name, null, grpNames, incIdx);
     }
 
     /**
@@ -2040,16 +2060,22 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
      * @param name Snapshot name.
      * @param snpPath Snapshot directory path.
      * @param grpNames Cache groups to be restored or {@code null} to restore all cache groups from the snapshot.
+     * @param incIdx Index of incremental snapshot, {@code 0} if restore full snapshot only.
      * @return Future which will be completed when restore operation finished.
      */
-    public IgniteFutureImpl<Void> restoreSnapshot(String name, @Nullable String snpPath, @Nullable Collection<String> grpNames) {
+    public IgniteFutureImpl<Void> restoreSnapshot(
+        String name,
+        @Nullable String snpPath,
+        @Nullable Collection<String> grpNames,
+        long incIdx
+    ) {
         A.notNullOrEmpty(name, "Snapshot name cannot be null or empty.");
         A.ensure(U.alphanumericUnderscore(name), "Snapshot name must satisfy the following name pattern: a-zA-Z0-9_");
         A.ensure(grpNames == null || !grpNames.isEmpty(), "List of cache group names cannot be empty.");
 
         cctx.kernalContext().security().authorize(ADMIN_SNAPSHOT);
 
-        return restoreCacheGrpProc.start(name, snpPath, grpNames);
+        return restoreCacheGrpProc.start(name, snpPath, grpNames, incIdx);
     }
 
     /** {@inheritDoc} */
