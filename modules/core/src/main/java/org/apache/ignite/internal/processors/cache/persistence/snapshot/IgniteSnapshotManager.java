@@ -78,7 +78,6 @@ import org.apache.ignite.binary.BinaryType;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.compute.ComputeTask;
 import org.apache.ignite.configuration.CacheConfiguration;
-import org.apache.ignite.configuration.DataStorageConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.events.SnapshotEvent;
@@ -92,9 +91,7 @@ import org.apache.ignite.internal.IgniteFeatures;
 import org.apache.ignite.internal.IgniteFutureCancelledCheckedException;
 import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
-import org.apache.ignite.internal.MarshallerContextImpl;
 import org.apache.ignite.internal.NodeStoppingException;
-import org.apache.ignite.internal.binary.BinaryUtils;
 import org.apache.ignite.internal.cluster.ClusterTopologyCheckedException;
 import org.apache.ignite.internal.cluster.DistributedConfigurationUtils;
 import org.apache.ignite.internal.events.DiscoveryCustomEvent;
@@ -197,7 +194,6 @@ import static org.apache.ignite.internal.IgniteFeatures.nodeSupports;
 import static org.apache.ignite.internal.MarshallerContextImpl.mappingFileStoreWorkDir;
 import static org.apache.ignite.internal.MarshallerContextImpl.resolveMappingFileStoreWorkDir;
 import static org.apache.ignite.internal.MarshallerContextImpl.saveMappings;
-import static org.apache.ignite.internal.binary.BinaryUtils.METADATA_FILE_SUFFIX;
 import static org.apache.ignite.internal.events.DiscoveryCustomEvent.EVT_DISCOVERY_CUSTOM_EVT;
 import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SYSTEM_POOL;
 import static org.apache.ignite.internal.pagemem.PageIdAllocator.FLAG_DATA;
@@ -1239,6 +1235,19 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
 
         assert incTask.isDone();
 
+        // Meta and mappings are changed within discovery protocol. Then it's safe to collect them here, and restore
+        // it locally on every node.
+        // Also, they're collected after ConsistentCutFinishRecord is written. Then there is no misses of meta relatively
+        // to the snapshot data.
+        Collection<BinaryType> binTypesCopy = cctx.kernalContext()
+            .cacheObjects()
+            .metadata(Collections.emptyList())
+            .values();
+
+        List<Map<Integer, MappedName>> mappingsCopy = cctx.kernalContext()
+            .marshallerContext()
+            .getCachedMappings();
+
         CompletableFuture<?> snpFilesFut = CompletableFuture.runAsync(() -> {
             File incSnpDir = incrementalSnapshotLocalDir(req.snapshotName(), req.snapshotPath(), req.incrementIndex());
 
@@ -1257,7 +1266,9 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
 
                 storeWalFiles(req.incrementIndex(), incSnpDir, lowPtr, highPtr);
 
-                storeBinaryMetaFiles(incSnpDir);
+                saveMappings(cctx.kernalContext(), mappingsCopy, incSnpDir);
+
+                cctx.kernalContext().cacheObjects().saveMetadata(binTypesCopy, incSnpDir);
             }
             catch (IgniteCheckedException | IOException e) {
                 throw F.wrap(e);
@@ -1330,27 +1341,6 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
                 clusterSnpFut = null;
             }
         }
-    }
-
-    /** Store binary meta and marshaller data to snapshot directory. */
-    private void storeBinaryMetaFiles(File incSnpDir) throws IgniteCheckedException, IOException {
-        File snpMarshallerDir = MarshallerContextImpl.mappingFileStoreWorkDir(incSnpDir.getAbsolutePath());
-
-        copyFiles(
-            MarshallerContextImpl.mappingFileStoreWorkDir(cctx.gridConfig().getWorkDirectory()),
-            snpMarshallerDir,
-            BinaryUtils::notTmpFile
-        );
-
-        PdsFolderSettings<?> pdsSettings = cctx.kernalContext().pdsFolderResolver().resolveFolders();
-
-        File snpBinMetaDir = new File(incSnpDir, DataStorageConfiguration.DFLT_BINARY_METADATA_PATH);
-
-        copyFiles(
-            binaryWorkDir(cctx.gridConfig().getWorkDirectory(), pdsSettings.folderName()),
-            snpBinMetaDir,
-            file -> file.getName().endsWith(METADATA_FILE_SUFFIX)
-        );
     }
 
     /**

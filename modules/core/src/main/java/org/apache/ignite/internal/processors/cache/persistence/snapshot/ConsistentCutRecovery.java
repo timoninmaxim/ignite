@@ -21,10 +21,13 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInternalFuture;
+import org.apache.ignite.internal.binary.BinaryContext;
+import org.apache.ignite.internal.binary.BinaryUtils;
 import org.apache.ignite.internal.pagemem.wal.WALIterator;
 import org.apache.ignite.internal.pagemem.wal.record.ConsistentCutFinishRecord;
 import org.apache.ignite.internal.pagemem.wal.record.ConsistentCutStartRecord;
@@ -35,8 +38,11 @@ import org.apache.ignite.internal.processors.cache.CacheGroupContext;
 import org.apache.ignite.internal.processors.cache.DynamicCacheDescriptor;
 import org.apache.ignite.internal.processors.cache.GridCacheContext;
 import org.apache.ignite.internal.processors.cache.GridCacheProcessor;
+import org.apache.ignite.internal.processors.cache.binary.CacheObjectBinaryProcessorImpl;
 import org.apache.ignite.internal.processors.cache.distributed.dht.topology.GridDhtLocalPartition;
 import org.apache.ignite.internal.processors.cache.persistence.CacheStripedExecutor;
+import org.apache.ignite.internal.processors.cache.persistence.GridCacheDatabaseSharedManager;
+import org.apache.ignite.internal.processors.cache.persistence.checkpoint.CheckpointManager;
 import org.apache.ignite.internal.processors.cache.persistence.wal.WALPointer;
 import org.apache.ignite.internal.processors.cache.persistence.wal.reader.IgniteWalIteratorFactory;
 import org.apache.ignite.internal.processors.cache.version.GridCacheVersion;
@@ -48,9 +54,11 @@ import org.apache.ignite.lang.IgniteBiTuple;
 import org.apache.ignite.lang.IgnitePredicate;
 import org.jetbrains.annotations.Nullable;
 
+import static org.apache.ignite.internal.MarshallerContextImpl.resolveMappingFileStoreWorkDir;
 import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.CLUSTER_SNAPSHOT;
 import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.CONSISTENT_CUT_START_RECORD;
 import static org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType.DATA_RECORD_V2;
+import static org.apache.ignite.internal.processors.cache.binary.CacheObjectBinaryProcessorImpl.binaryWorkDir;
 import static org.apache.ignite.internal.processors.cache.persistence.wal.FileWriteAheadLogManager.WAL_SEGMENT_COMPACTED_OR_RAW_FILE_FILTER;
 
 /**
@@ -73,7 +81,7 @@ public class ConsistentCutRecovery {
     private final CacheStripedExecutor exec;
 
     /** */
-    private final GridCacheProcessor cacheProc;
+    private final GridKernalContext kernalCtx;
 
     /** */
     private final IgniteLogger log;
@@ -82,19 +90,23 @@ public class ConsistentCutRecovery {
     private final Set<Integer> cacheIds;
 
     /** */
+    private final BooleanSupplier stopChecker;
+
+    /** */
     public ConsistentCutRecovery(
         GridKernalContext kernalCtx,
         String snpName,
         @Nullable String snpPath,
         long incIdx,
-        Set<Integer> cacheIds
+        Set<Integer> cacheIds,
+        BooleanSupplier stopChecker
     ) {
         this.snpName = snpName;
         this.snpPath = snpPath;
         this.cacheIds = cacheIds;
         this.incIdx = incIdx;
-
-        cacheProc = kernalCtx.cache();
+        this.stopChecker = stopChecker;
+        this.kernalCtx = kernalCtx;
 
         exec = new CacheStripedExecutor(kernalCtx.pools().getStripedExecutorService());
         log = kernalCtx.log(ConsistentCutRecovery.class);
@@ -108,13 +120,17 @@ public class ConsistentCutRecovery {
     public IgniteInternalFuture<Boolean> start() {
         GridFutureAdapter<Boolean> res = new GridFutureAdapter<>();
 
-        cacheProc.context().kernalContext().pools().getSnapshotExecutorService().submit(() -> {
+        kernalCtx.pools().getSnapshotExecutorService().submit(() -> {
             try {
                 walEnabled(false);
 
-                recover();
+                String incSnpDir = snapshotManager().incrementalSnapshotLocalDir(snpName, snpPath, incIdx).toString();
 
-                res.onDone(true);
+                restoreBinaryMeta(incSnpDir);
+
+                restoreMappings(incSnpDir);
+
+                recover();
             }
             catch (Throwable e) {
                 res.onDone(e);
@@ -122,15 +138,51 @@ public class ConsistentCutRecovery {
             finally {
                 walEnabled(true);
             }
+
+            GridCacheDatabaseSharedManager db = (GridCacheDatabaseSharedManager)cacheProcessor().context().database();
+
+            CheckpointManager cpMgr = db.getCheckpointManager();
+
+            cpMgr.forceCheckpoint("incrementalSnapshotRestore", (f) -> {
+                if (f.error() != null)
+                    res.onDone(f.error());
+                else
+                    res.onDone(true);
+            });
         });
 
         return res;
     }
 
     /** */
+    private void restoreBinaryMeta(String incSnpDir) throws IgniteCheckedException {
+        File binDir = binaryWorkDir(incSnpDir, kernalCtx.pdsFolderResolver().resolveFolders().folderName());
+
+        kernalCtx.cacheObjects().updateMetadata(binDir, stopChecker, true);
+    }
+
+    /** */
+    private void restoreMappings(String incSnpDir) {
+        File[] mappings = resolveMappingFileStoreWorkDir(incSnpDir).listFiles(BinaryUtils::notTmpFile);
+
+        if (mappings == null)
+            return;
+
+        for (File map: mappings) {
+            String fileName = map.getName();
+
+            int typeId = BinaryUtils.mappedTypeId(fileName);
+            byte platformId = BinaryUtils.mappedFilePlatformId(fileName);
+
+            BinaryContext binCtx = ((CacheObjectBinaryProcessorImpl)kernalCtx.cacheObjects()).binaryContext();
+
+            binCtx.registerUserClassName(typeId, BinaryUtils.readMapping(map), false, true, platformId);
+        }
+    }
+
+    /** */
     private ConsistentCutFinishRecord readFinishRecord(File segment) throws IgniteCheckedException, IOException {
-        IncrementalSnapshotMetadata incSnpMeta = cacheProc.context().snapshotMgr()
-            .readIncrementalSnapshotMetadata(snpName, snpPath, incIdx);
+        IncrementalSnapshotMetadata incSnpMeta = snapshotManager().readIncrementalSnapshotMetadata(snpName, snpPath, incIdx);
 
         WALIterator it = walIter(log, segment);
 
@@ -202,8 +254,7 @@ public class ConsistentCutRecovery {
         File[] segments = new File[0];
 
         for (int i = 1; i <= incIdx; i++) {
-            File incSnpDir = cacheProc.context().cache().context().snapshotMgr()
-                .incrementalSnapshotLocalDir(snpName, snpPath, i);
+            File incSnpDir = snapshotManager().incrementalSnapshotLocalDir(snpName, snpPath, i);
 
             File[] incSegs = incSnpDir.listFiles(WAL_SEGMENT_COMPACTED_OR_RAW_FILE_FILTER);
 
@@ -223,9 +274,9 @@ public class ConsistentCutRecovery {
     /** */
     private void walEnabled(boolean enabled) {
         for (int cacheId: cacheIds) {
-            int grpId = cacheProc.cacheDescriptor(cacheId).groupId();
+            int grpId = cacheProcessor().cacheDescriptor(cacheId).groupId();
 
-            CacheGroupContext grp = cacheProc.cacheGroup(grpId);
+            CacheGroupContext grp = cacheProcessor().cacheGroup(grpId);
 
             grp.localWalEnabled(enabled, true);
         }
@@ -247,13 +298,13 @@ public class ConsistentCutRecovery {
 
             int cacheId = dataEntry.cacheId();
 
-            DynamicCacheDescriptor desc = cacheProc.cacheDescriptor(cacheId);
+            DynamicCacheDescriptor desc = cacheProcessor().cacheDescriptor(cacheId);
 
             if (desc == null || !cacheIds.contains(desc.groupId()))
                 continue;
 
             exec.submit(() -> {
-                GridCacheContext<?, ?> cacheCtx = cacheProc.context().cacheContext(cacheId);
+                GridCacheContext<?, ?> cacheCtx = cacheProcessor().context().cacheContext(cacheId);
 
                 try {
                     applyDataEntry(cacheCtx, dataEntry);
@@ -317,12 +368,22 @@ public class ConsistentCutRecovery {
      *
      * @return Iterator over WAL archive.
      */
-    public static WALIterator walIter(IgniteLogger log, File... segments) throws IgniteCheckedException {
+    private WALIterator walIter(IgniteLogger log, File... segments) throws IgniteCheckedException {
         IgniteWalIteratorFactory factory = new IgniteWalIteratorFactory(log);
 
         IgniteWalIteratorFactory.IteratorParametersBuilder params = new IgniteWalIteratorFactory.IteratorParametersBuilder()
             .filesOrDirs(segments);
 
         return factory.iterator(params);
+    }
+
+    /** */
+    private GridCacheProcessor cacheProcessor() {
+        return kernalCtx.cache();
+    }
+
+    /** */
+    private IgniteSnapshotManager snapshotManager() {
+        return kernalCtx.cache().context().snapshotMgr();
     }
 }

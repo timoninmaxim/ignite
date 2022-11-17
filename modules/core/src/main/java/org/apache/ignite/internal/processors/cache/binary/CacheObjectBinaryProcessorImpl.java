@@ -1030,7 +1030,7 @@ public class CacheObjectBinaryProcessorImpl extends GridProcessorAdapter impleme
     }
 
     /** {@inheritDoc} */
-    @Override public void updateMetadata(File metadataDir, BooleanSupplier stopChecker) throws IgniteCheckedException {
+    @Override public void updateMetadata(File metadataDir, BooleanSupplier stopChecker, boolean locOnly) throws IgniteCheckedException {
         if (!metadataDir.exists())
             return;
 
@@ -1058,7 +1058,10 @@ public class CacheObjectBinaryProcessorImpl extends GridProcessorAdapter impleme
                 if (Thread.interrupted())
                     throw new IgniteInterruptedCheckedException("Thread has been interrupted.");
 
-                addMeta(newMeta.typeId(), newMeta.wrap(binaryContext()), false);
+                if (locOnly)
+                    addMetaLocally(newMeta.typeId(), newMeta.wrap(binaryContext()), true);
+                else
+                    addMeta(newMeta.typeId(), newMeta.wrap(binaryContext()), false);
             }
         }
         catch (BinaryObjectException e) {

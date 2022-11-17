@@ -891,7 +891,7 @@ public class SnapshotRestoreProcess {
 
                             File binDir = binaryWorkDir(snpDir.getAbsolutePath(), meta.folderName());
 
-                            ctx.cacheObjects().updateMetadata(binDir, opCtx0.stopChecker);
+                            ctx.cacheObjects().updateMetadata(binDir, opCtx0.stopChecker, false);
                         }
                         catch (Throwable t) {
                             log.error("Unable to perform metadata update operation for the cache groups restore process", t);
@@ -1219,7 +1219,7 @@ public class SnapshotRestoreProcess {
                 ", incrementalIndex=" + opCtx0.incIdx + ']');
         }
 
-        return new ConsistentCutRecovery(ctx, opCtx0.snpName, opCtx0.snpPath, opCtx0.incIdx, opCtx0.cfgs.keySet())
+        return new ConsistentCutRecovery(ctx, opCtx0.snpName, opCtx0.snpPath, opCtx0.incIdx, opCtx0.cfgs.keySet(), opCtx0.stopChecker)
             .start();
     }
 

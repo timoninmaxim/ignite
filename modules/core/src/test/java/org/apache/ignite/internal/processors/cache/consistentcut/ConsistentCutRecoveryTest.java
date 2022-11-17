@@ -56,6 +56,7 @@ import org.apache.ignite.transactions.Transaction;
 import org.junit.Test;
 
 import static org.apache.ignite.configuration.DataStorageConfiguration.DFLT_BINARY_METADATA_PATH;
+import static org.apache.ignite.configuration.DataStorageConfiguration.DFLT_WAL_ARCHIVE_PATH;
 import static org.apache.ignite.configuration.DataStorageConfiguration.DFLT_WAL_PATH;
 import static org.apache.ignite.configuration.IgniteConfiguration.DFLT_SNAPSHOT_DIRECTORY;
 import static org.apache.ignite.events.EventType.EVT_CONSISTENCY_VIOLATION;
@@ -213,6 +214,25 @@ public class ConsistentCutRecoveryTest extends AbstractConsistentCutBlockingTest
     }
 
     /** */
+    @Test
+    public void testRestartAfterRecovery() throws Exception {
+        loadAndCreateSnapshots(1);
+
+        restartWithCleanPersistence();
+
+        grid(0).context().cache().context().snapshotMgr()
+            .restoreSnapshot(SNP, null, null, 1)
+            .get();
+
+        stopAllGrids();
+
+        startGrids(nodes());
+
+        checkData(2_000, CACHE);
+        checkData(2_000, CACHE2);
+    }
+
+    /** */
     private void loadAndCreateSnapshots(int incSnpCnt) {
         int from = 1000;
 
@@ -269,7 +289,7 @@ public class ConsistentCutRecoveryTest extends AbstractConsistentCutBlockingTest
 
         assertTrue(U.delete(Paths.get(U.defaultWorkDirectory(), "cp").toFile()));
 
-        deleteNodesDirs(DFLT_STORE_DIR, DFLT_BINARY_METADATA_PATH, DFLT_WAL_PATH);
+        deleteNodesDirs(DFLT_STORE_DIR, DFLT_BINARY_METADATA_PATH, DFLT_WAL_PATH, DFLT_WAL_ARCHIVE_PATH);
 
         startGrids(nodes());
 
@@ -294,9 +314,6 @@ public class ConsistentCutRecoveryTest extends AbstractConsistentCutBlockingTest
 
             for (String dir: dirs) {
                 File p = Paths.get(U.defaultWorkDirectory(), dir, nodeFolder).toFile();
-
-                if (!p.exists())
-                    System.out.println("FILE " + p);
 
                 assertTrue(U.delete(p));
             }
