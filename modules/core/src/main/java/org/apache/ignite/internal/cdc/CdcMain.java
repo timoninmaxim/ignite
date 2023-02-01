@@ -442,7 +442,10 @@ public class CdcMain implements Runnable {
                         .peek(p -> {
                             long nextSgmnt = segmentIndex(p);
 
-                            assert lastSgmnt.get() == -1 || nextSgmnt - lastSgmnt.get() == 1;
+                            if (lastSgmnt.get() != -1 && nextSgmnt - lastSgmnt.get() != 1) {
+                                throw new IgniteException("Found missed segments. Some events are missed. " +
+                                    "[lastSegment=" + lastSgmnt.get() + ", nextSegment=" + nextSgmnt + ']');
+                            }
 
                             lastSgmnt.set(nextSgmnt);
                         })
@@ -522,15 +525,16 @@ public class CdcMain implements Runnable {
                 walState = null;
             }
 
-            boolean interrupted = Thread.interrupted();
+            boolean interrupted = false;
 
-            while (iter.hasNext() && !interrupted) {
+            do {
                 boolean commit = consumer.onRecords(iter);
 
                 if (commit) {
                     T2<WALPointer, Integer> curState = iter.state();
 
-                    assert curState != null;
+                    if (curState == null)
+                        continue;
 
                     if (log.isDebugEnabled())
                         log.debug("Saving state [curState=" + curState + ']');
@@ -557,7 +561,7 @@ public class CdcMain implements Runnable {
                 }
 
                 interrupted = Thread.interrupted();
-            }
+            } while (iter.hasNext() && !interrupted);
 
             if (interrupted)
                 throw new IgniteException("Change Data Capture Application interrupted");
