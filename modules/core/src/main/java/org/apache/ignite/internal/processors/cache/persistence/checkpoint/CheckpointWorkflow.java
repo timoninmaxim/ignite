@@ -270,6 +270,8 @@ public class CheckpointWorkflow {
 
         checkpointReadWriteLock.writeLock();
 
+//        U.sleep(5000);
+
         try {
             curr.transitTo(LOCK_TAKEN);
 

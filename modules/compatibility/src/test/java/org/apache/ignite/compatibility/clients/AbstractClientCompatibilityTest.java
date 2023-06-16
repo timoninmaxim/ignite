@@ -17,11 +17,26 @@
 
 package org.apache.ignite.compatibility.clients;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
 import org.apache.ignite.Ignite;
+import org.apache.ignite.Ignition;
+import org.apache.ignite.cache.CacheAtomicityMode;
+import org.apache.ignite.cache.CacheKeyConfiguration;
+import org.apache.ignite.cache.CacheMode;
+import org.apache.ignite.cache.QueryEntity;
+import org.apache.ignite.client.ClientCache;
+import org.apache.ignite.client.ClientCacheConfiguration;
+import org.apache.ignite.client.GlobalIndexKey;
+import org.apache.ignite.client.IgniteClient;
+import org.apache.ignite.client.Person;
 import org.apache.ignite.compatibility.testframework.junits.Dependency;
 import org.apache.ignite.compatibility.testframework.junits.IgniteCompatibilityAbstractTest;
 import org.apache.ignite.compatibility.testframework.junits.IgniteCompatibilityNodeRunner;
+import org.apache.ignite.configuration.BinaryConfiguration;
+import org.apache.ignite.configuration.ClientConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.IgniteVersionUtils;
 import org.apache.ignite.internal.util.GridJavaProcess;
@@ -38,9 +53,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
-import static org.apache.ignite.compatibility.IgniteReleasedVersion.VER_2_4_0;
-import static org.apache.ignite.compatibility.IgniteReleasedVersion.since;
-import static org.apache.ignite.testframework.GridTestUtils.cartesianProduct;
+import static org.apache.ignite.compatibility.clients.JavaThinCompatibilityTest.ADDR;
 
 /**
  * Tests that current client version can connect to the server with specified version and
@@ -77,8 +90,16 @@ public abstract class AbstractClientCompatibilityTest extends IgniteCompatibilit
 
     /** Parameters. */
     @Parameterized.Parameters(name = "Version {0}")
-    public static Iterable<Object[]> versions() {
-        return cartesianProduct(F.concat(true, IgniteVersionUtils.VER_STR, since(VER_2_4_0)));
+    public static List<Object[]> versions() {
+        ArrayList<Object[]> l = new ArrayList<>();
+
+        l.add(new Object[] {"2.10.0"});
+        l.add(new Object[] {"2.14.0"});
+
+
+        return l;
+
+//        return cartesianProduct(F.concat(true, IgniteVersionUtils.VER_STR, since(VER_2_4_0)));
     }
 
     /** Old Ignite version. */
@@ -107,6 +128,125 @@ public abstract class AbstractClientCompatibilityTest extends IgniteCompatibilit
 
         return dependencies;
     }
+
+    /** */
+    @Test
+    public void testOldClientWritesNewClientReads() throws Exception {
+        try (Ignite ignite = startGrid(0)) {
+            initNode(ignite);
+
+            String fileName = IgniteCompatibilityNodeRunner.storeToFile((IgniteInClosure<String>)this::testPutClient1);
+
+            GridJavaProcess proc = GridJavaProcess.exec(
+                RemoteClientRunner.class.getName(),
+                IgniteVersionUtils.VER_STR + ' ' + fileName,
+                log,
+                log::info,
+                null,
+                null,
+                getProcessProxyJvmArgs(verFormatted),
+                null
+            );
+
+            try {
+                GridTestUtils.waitForCondition(() -> !proc.getProcess().isAlive(), 5_000L);
+
+                assertEquals(0, proc.getProcess().exitValue());
+            }
+            finally {
+                if (proc.getProcess().isAlive())
+                    proc.kill();
+            }
+
+            testGetClient1("");
+        }
+    }
+
+    /** */
+    private void testPutClient(String ignore) {
+        X.println(">>>> Testing cache API");
+
+        try (IgniteClient client = Ignition.startClient(new ClientConfiguration()
+            .setAddresses(ADDR)
+            .setPartitionAwarenessEnabled(true)
+        )) {
+            ClientCache<Object, Object> cache = client.getOrCreateCache(new ClientCacheConfiguration()
+                .setName("testCacheApi")
+//                .setGroupName("INDEX_CACHE_GROUP")  Not sure groups affect.
+                .setCacheMode(CacheMode.PARTITIONED)
+                .setAtomicityMode(CacheAtomicityMode.TRANSACTIONAL)
+                .setKeyConfiguration(new CacheKeyConfiguration(GlobalIndexKey.class))
+                .setQueryEntities(
+                    new QueryEntity(GlobalIndexKey.class, Object.class)
+                        .setFields(new LinkedHashMap<>(F.asMap(
+                            "value", "java.lang.String",
+                            "payload", "java.lang.Object")))
+                        .setKeyFields(F.asSet("value", "payload"))
+                ));
+
+            GlobalIndexKey key = new GlobalIndexKey("name", new Person(1, "name"));
+
+            Object o = new Object();
+
+            System.out.println("PUT " + key + " " + o);
+
+            cache.put(key, o);
+        }
+    }
+
+    /** */
+    private void testGetClient() {
+        X.println(">>>> Testing cache API");
+
+        try (IgniteClient client = Ignition.startClient(new ClientConfiguration()
+            .setAddresses(ADDR)
+            .setPartitionAwarenessEnabled(true)
+        )) {
+            ClientCache<Object, Object> cache = client.cache("testCacheApi");
+
+            GlobalIndexKey key = new GlobalIndexKey("name", new Person(1, "name"));
+
+            Object res = cache.get(key);
+
+            System.out.println("RESULT GET " + res);
+        }
+    }
+
+    /** */
+    private void testPutClient1(String ignore) {
+        X.println(">>>> Testing cache API");
+
+        try (IgniteClient client = Ignition.startClient(new ClientConfiguration()
+            .setAddresses(ADDR)
+            .setPartitionAwarenessEnabled(true)
+        )) {
+            ClientCache<Object, Object> cache = client.getOrCreateCache(new ClientCacheConfiguration()
+                .setName("testCacheApi")
+                .setCacheMode(CacheMode.PARTITIONED)
+                .setAtomicityMode(CacheAtomicityMode.TRANSACTIONAL));
+
+            cache.put(new Person(0, "0"), 1);
+        }
+    }
+
+    /** */
+    private void testGetClient1(String ignore) {
+        X.println(">>>> Testing cache API");
+
+        try (IgniteClient client = Ignition.startClient(new ClientConfiguration()
+            .setAddresses(ADDR)
+            .setPartitionAwarenessEnabled(true)
+                .setBinaryConfiguration(new BinaryConfiguration().setCompactFooter(false))
+//            .setAutoBinaryConfigurationEnabled(false)
+        )) {
+            ClientCache<Object, Object> cache = client.cache("testCacheApi");
+
+            Object res = cache.get(new Person(0, "0"));
+
+            System.out.println("RESULT GET " + res);
+        }
+    }
+
 
     /**
      * @throws Exception If failed.

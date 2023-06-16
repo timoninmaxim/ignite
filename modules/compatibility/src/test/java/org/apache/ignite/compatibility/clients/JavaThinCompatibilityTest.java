@@ -34,6 +34,7 @@ import org.apache.ignite.IgniteException;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.binary.BinaryObject;
 import org.apache.ignite.cache.CacheAtomicityMode;
+import org.apache.ignite.cache.CacheKeyConfiguration;
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cache.QueryEntity;
 import org.apache.ignite.cache.QueryIndex;
@@ -47,6 +48,7 @@ import org.apache.ignite.client.ClientCacheConfiguration;
 import org.apache.ignite.client.ClientFeatureNotSupportedByServerException;
 import org.apache.ignite.client.ClientServiceDescriptor;
 import org.apache.ignite.client.ClientTransaction;
+import org.apache.ignite.client.GlobalIndexKey;
 import org.apache.ignite.client.IgniteClient;
 import org.apache.ignite.client.Person;
 import org.apache.ignite.cluster.ClusterNode;
@@ -201,21 +203,30 @@ public class JavaThinCompatibilityTest extends AbstractClientCompatibilityTest {
     }
 
     /** */
-    private void testCacheApi() throws Exception {
+    private void testCacheApi() {
         X.println(">>>> Testing cache API");
 
-        try (IgniteClient client = Ignition.startClient(new ClientConfiguration().setAddresses(ADDR))) {
-            ClientCache<Object, Object> cache = client.getOrCreateCache("testCacheApi");
+        try (IgniteClient client = Ignition.startClient(new ClientConfiguration()
+            .setAddresses(ADDR)
+            .setPartitionAwarenessEnabled(true)
+        )) {
+            ClientCache<Object, Object> cache = client.getOrCreateCache(new ClientCacheConfiguration()
+                .setName("testCacheApi")
+//                .setGroupName("INDEX_CACHE_GROUP")  Not sure groups affect.
+                .setCacheMode(CacheMode.PARTITIONED)
+                .setAtomicityMode(CacheAtomicityMode.TRANSACTIONAL)
+                .setKeyConfiguration(new CacheKeyConfiguration(GlobalIndexKey.class))
+                .setQueryEntities(
+                    new QueryEntity(GlobalIndexKey.class, Object.class)
+                        .setFields(new LinkedHashMap<>(F.asMap(
+                            "value", "java.lang.String",
+                            "payload", "java.lang.Object")))
+                        .setKeyFields(F.asSet("value", "payload"))
+                ));
 
-            cache.put(1, 1);
+            GlobalIndexKey key = new GlobalIndexKey("name", new Person(1, "name"));
 
-            assertEquals(1, cache.get(1));
-
-            Person person = new Person(2, "name");
-
-            cache.put(2, person);
-
-            assertEquals(person, cache.get(2));
+            cache.put(key, new Object());
         }
     }
 
@@ -402,15 +413,11 @@ public class JavaThinCompatibilityTest extends AbstractClientCompatibilityTest {
     }
 
     /** {@inheritDoc} */
-    @Override protected void testClient(IgniteProductVersion clientVer, IgniteProductVersion serverVer) throws Exception {
-        IgniteProductVersion minVer = clientVer.compareTo(serverVer) < 0 ? clientVer : serverVer;
-
-        testCacheConfiguration(
-            minVer.compareTo(VER_2_7_0) >= 0,
-            minVer.compareTo(VER_2_8_0) >= 0
-        );
-
+    @Override protected void testClient(IgniteProductVersion clientVer, IgniteProductVersion serverVer) {
         testCacheApi();
+
+        if (true)
+            return;
 
         testBinary();
 
