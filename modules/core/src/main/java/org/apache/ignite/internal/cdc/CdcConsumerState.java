@@ -71,6 +71,9 @@ public class CdcConsumerState {
     /** */
     public static final String CACHES_STATE_FILE_NAME = "cdc-caches-state" + FILE_SUFFIX;
 
+    /** */
+    public static final String ACTIVE_STATE_FILE_NAME = "cdc-active-state" + FILE_SUFFIX;
+
     /** Log. */
     private final IgniteLogger log;
 
@@ -98,6 +101,12 @@ public class CdcConsumerState {
     /** Mappings types state file. */
     private final Path tmpCaches;
 
+    /** */
+    private final Path active;
+
+    /** */
+    private final Path tmpActive;
+
     /**
      * @param stateDir State directory.
      */
@@ -111,6 +120,8 @@ public class CdcConsumerState {
         tmpMappings = stateDir.resolve(MAPPINGS_STATE_FILE_NAME + TMP_SUFFIX);
         caches = stateDir.resolve(CACHES_STATE_FILE_NAME);
         tmpCaches = stateDir.resolve(CACHES_STATE_FILE_NAME + TMP_SUFFIX);
+        active = stateDir.resolve(ACTIVE_STATE_FILE_NAME);
+        tmpActive = stateDir.resolve(ACTIVE_STATE_FILE_NAME + TMP_SUFFIX);
     }
 
     /**
@@ -254,6 +265,17 @@ public class CdcConsumerState {
         }
 
         return state;
+    }
+
+    /** */
+    public void saveActive(boolean active) throws IOException {
+        save(active, tmpActive, this.active);
+    }
+
+    /** */
+    // TODO: default value - read CdcConsumer from IgniteConfiguration.
+    public boolean loadActive() {
+        return load(active, () -> false);
     }
 
     /** Save object to file. */
