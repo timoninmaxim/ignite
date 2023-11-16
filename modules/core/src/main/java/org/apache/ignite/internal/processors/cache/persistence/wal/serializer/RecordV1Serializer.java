@@ -221,6 +221,11 @@ public class RecordV1Serializer implements RecordSerializer {
     }
 
     /** {@inheritDoc} */
+    @Override public RecordDataSerializer recordDataSerializer() {
+        return dataSerializer;
+    }
+
+    /** {@inheritDoc} */
     @Override public void writeRecord(WALRecord rec, ByteBuffer buf) throws IgniteCheckedException {
         writeWithCrc(rec, buf, recordIO);
     }

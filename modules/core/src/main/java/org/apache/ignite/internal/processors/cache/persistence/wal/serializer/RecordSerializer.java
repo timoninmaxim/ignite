@@ -60,4 +60,9 @@ public interface RecordSerializer {
      * Flag to write (or not) wal pointer to record
      */
     public boolean writePointer();
+
+    /**
+     * @return Record data serializer.
+     */
+    public RecordDataSerializer recordDataSerializer();
 }

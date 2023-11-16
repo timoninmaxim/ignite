@@ -235,6 +235,11 @@ public class RecordV2Serializer implements RecordSerializer {
     }
 
     /** {@inheritDoc} */
+    @Override public RecordDataSerializer recordDataSerializer() {
+        return dataSerializer;
+    }
+
+    /** {@inheritDoc} */
     @Override public int size(WALRecord record) throws IgniteCheckedException {
         return recordIO.sizeWithHeaders(record);
     }
