@@ -17,7 +17,9 @@
 
 package org.apache.ignite.cache.query;
 
+import java.util.Iterator;
 import java.util.Objects;
+import javax.cache.Cache;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.IgniteDataStreamer;
@@ -25,11 +27,17 @@ import org.apache.ignite.IgniteException;
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cache.query.annotations.QuerySqlField;
 import org.apache.ignite.configuration.CacheConfiguration;
+import org.apache.ignite.internal.IgniteEx;
+import org.apache.ignite.internal.metric.IoStatisticsType;
+import org.apache.ignite.internal.processors.metric.MetricRegistry;
+import org.apache.ignite.spi.metric.LongMetric;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.junit.Test;
 
 import static org.apache.ignite.cache.query.IndexQueryCriteriaBuilder.lt;
+import static org.apache.ignite.internal.metric.IoStatisticsHolderIndex.LOGICAL_READS_LEAF;
+import static org.apache.ignite.internal.processors.metric.impl.MetricUtils.metricName;
 
 /** */
 public class IndexQueryLocalTest extends GridCommonAbstractTest {
@@ -44,6 +52,12 @@ public class IndexQueryLocalTest extends GridCommonAbstractTest {
 
     /** */
     private static Ignite crd;
+
+//    /** {@inheritDoc} */
+//    @Override protected IgniteConfiguration getConfiguration(String instanceName) {
+//        return super.getConfiguration(instanceName)
+//            .setMetr
+//    }
 
     /** {@inheritDoc} */
     @Override protected void beforeTestsStarted() throws Exception {
@@ -113,6 +127,29 @@ public class IndexQueryLocalTest extends GridCommonAbstractTest {
 
         GridTestUtils.assertThrows(null, () -> cache.query(qry.setLocal(true)).getAll(),
             IgniteException.class, "Cluster group is empty");
+    }
+
+    /** */
+    @Test
+    public void testPageSize() {
+        IgniteCache<Long, Person> cache = crd.createCache(ccfg(CacheMode.PARTITIONED));
+
+        insertData(crd, cache);
+
+        String regName = metricName(IoStatisticsType.SORTED_INDEX.metricGroupName(), cache.getName(), IDX);
+        MetricRegistry r = ((IgniteEx)crd).context().metric().registry(regName);
+        LongMetric m = r.findMetric(LOGICAL_READS_LEAF);
+
+        long val = m.value();
+
+        IndexQuery<Long, Person> qry = new IndexQuery<>(Person.class, IDX);
+        qry.setPageSize(1);
+        qry.setLocal(true);
+
+        Iterator<Cache.Entry<Long, Person>> it = cache.query(qry).iterator();
+        it.next();
+
+        System.out.println("COUNTER = " + (m.value() - val));
     }
 
     /** */

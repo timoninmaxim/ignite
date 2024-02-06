@@ -1171,8 +1171,6 @@ public abstract class GridCacheQueryManager<K, V> extends GridCacheManagerAdapte
                     log.debug("Received index iterator [iterHasNext=" + iter.hasNext() +
                         ", cacheSize=" + cache.size() + ']');
 
-                int cnt = 0;
-
                 boolean stop = false;
                 boolean pageSent = false;
 
@@ -1320,9 +1318,12 @@ public abstract class GridCacheQueryManager<K, V> extends GridCacheManagerAdapte
                         }
                     }
 
-                    if (!loc) {
-                        if (++cnt == pageSize || !iter.hasNext()) {
+                    // TODO
+//                    if (!loc) {
+                        if (data.size() == pageSize || !iter.hasNext()) {
                             boolean finished = !iter.hasNext();
+
+                            System.out.println("READY");
 
                             onPageReady(loc, qryInfo, res.metadata(), data, finished, null);
 
@@ -1342,7 +1343,7 @@ public abstract class GridCacheQueryManager<K, V> extends GridCacheManagerAdapte
                                 break; // while
                         }
                     }
-                }
+//                }
 
                 if (!pageSent) {
                     if (rdc == null)
