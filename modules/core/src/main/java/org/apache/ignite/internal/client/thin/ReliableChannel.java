@@ -533,7 +533,12 @@ final class ReliableChannel implements AutoCloseable {
         Throwable t,
         @Nullable List<ClientConnectionException> failures
     ) {
-        log.warning("Channel failure [channel=" + ch + ", err=" + t.getMessage() + ']', t);
+        String s = failures == null ? "null" : String.valueOf(failures.size());
+
+        if ("4".equals(s))
+            System.out.println();
+
+        log.warning("Channel failure [channel=" + ch + ", err=" + t.getMessage() + ", fails=" + s + ']', t);
 
         if (ch != null && ch == hld.ch)
             hld.closeChannel();
@@ -850,6 +855,8 @@ final class ReliableChannel implements AutoCloseable {
 
                 ClientChannel c0 = hld.ch;
 
+                System.out.println("HOLDER " + hld.chCfg.getAddresses());
+
                 c = hld.getOrCreateChannel();
 
                 try {
@@ -872,6 +879,8 @@ final class ReliableChannel implements AutoCloseable {
             catch (ClientConnectionException e) {
                 if (failures == null)
                     failures = new ArrayList<>();
+
+                System.out.println("FAILRE = " + hld.serverNodeId);
 
                 failures.add(e);
 
