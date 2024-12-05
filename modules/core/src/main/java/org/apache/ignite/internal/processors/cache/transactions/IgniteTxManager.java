@@ -79,9 +79,11 @@ import org.apache.ignite.internal.processors.cache.distributed.GridCacheMappedVe
 import org.apache.ignite.internal.processors.cache.distributed.GridCacheTxRecoveryFuture;
 import org.apache.ignite.internal.processors.cache.distributed.GridDistributedCacheEntry;
 import org.apache.ignite.internal.processors.cache.distributed.GridDistributedLockCancelledException;
+import org.apache.ignite.internal.processors.cache.distributed.GridDistributedTxPrepareRequest;
 import org.apache.ignite.internal.processors.cache.distributed.dht.GridDhtTxLocal;
 import org.apache.ignite.internal.processors.cache.distributed.dht.GridDhtTxOnePhaseCommitAckRequest;
 import org.apache.ignite.internal.processors.cache.distributed.dht.GridDhtTxRemote;
+import org.apache.ignite.internal.processors.cache.distributed.dht.TransactionAttributesAwareRequest;
 import org.apache.ignite.internal.processors.cache.distributed.dht.colocated.GridDhtColocatedLockFuture;
 import org.apache.ignite.internal.processors.cache.distributed.dht.topology.GridDhtInvalidPartitionException;
 import org.apache.ignite.internal.processors.cache.distributed.near.GridNearCacheAdapter;
@@ -691,6 +693,7 @@ public class IgniteTxManager extends GridCacheSharedManagerAdapter {
      * @param timeout transaction timeout.
      * @param txSize Expected transaction size.
      * @param lb Label.
+     * @param appAttrs Application attributes.
      * @return New transaction.
      */
     public GridNearTxLocal newTx(
@@ -702,7 +705,8 @@ public class IgniteTxManager extends GridCacheSharedManagerAdapter {
         long timeout,
         boolean storeEnabled,
         int txSize,
-        @Nullable String lb
+        @Nullable String lb,
+        @Nullable Map<String, String> appAttrs
     ) {
         assert sysCacheCtx == null || sysCacheCtx.systemTx();
 
@@ -732,6 +736,8 @@ public class IgniteTxManager extends GridCacheSharedManagerAdapter {
             if (topVer != null)
                 tx.topologyVersion(topVer);
         }
+
+        tx.applicationAttributes(appAttrs);
 
         return onCreated(sysCacheCtx, tx);
     }
@@ -2975,6 +2981,9 @@ public class IgniteTxManager extends GridCacheSharedManagerAdapter {
      * @param plc IO policy.
      */
     public void sendTransactionMessage(UUID nodeId, GridCacheMessage msg, IgniteInternalTx tx, byte plc) throws IgniteCheckedException {
+        if (msg instanceof GridDistributedTxPrepareRequest && tx != null && tx.applicationAttributes() != null)
+            msg = new TransactionAttributesAwareRequest((GridDistributedTxPrepareRequest)msg, tx.applicationAttributes());
+
         BiFunction<GridCacheMessage, IgniteInternalTx, GridCacheMessage> transform = txMsgTransform;
 
         if (transform != null)
