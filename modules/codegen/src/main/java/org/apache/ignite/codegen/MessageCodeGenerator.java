@@ -17,6 +17,10 @@
 
 package org.apache.ignite.codegen;
 
+import java.beans.BeanInfo;
+import java.beans.IntrospectionException;
+import java.beans.Introspector;
+import java.beans.PropertyDescriptor;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -24,24 +28,16 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
-import java.util.UUID;
+import java.util.*;
+
 import org.apache.ignite.internal.GridCodegenConverter;
 import org.apache.ignite.internal.GridDirectCollection;
 import org.apache.ignite.internal.GridDirectMap;
 import org.apache.ignite.internal.GridDirectTransient;
+import org.apache.ignite.internal.GridJobCancelRequest;
 import org.apache.ignite.internal.IgniteCodeGeneratingFail;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.IgniteUtils;
@@ -59,13 +55,6 @@ import static java.lang.reflect.Modifier.isTransient;
 * Direct marshallable code generator.
 */
 public class MessageCodeGenerator {
-    /** */
-    private static final Comparator<Field> FIELD_CMP = new Comparator<Field>() {
-        @Override public int compare(Field f1, Field f2) {
-            return f1.getName().compareTo(f2.getName());
-        }
-    };
-
     /** */
     public static final String DFLT_SRC_DIR = U.getIgniteHome() + "/modules/core/src/main/java";
 
@@ -168,77 +157,7 @@ public class MessageCodeGenerator {
 
         MessageCodeGenerator gen = new MessageCodeGenerator(srcDir);
 
-//        gen.generateAll(true);
-
-//        gen.generateAndWrite(GridCacheMessage.class);
-
-//        gen.generateAndWrite(GridMessageCollection.class);
-//        gen.generateAndWrite(DataStreamerEntry.class);
-
-//        gen.generateAndWrite(GridDistributedLockRequest.class);
-//        gen.generateAndWrite(GridDistributedLockResponse.class);
-//        gen.generateAndWrite(GridNearLockRequest.class);
-//        gen.generateAndWrite(GridNearLockResponse.class);
-//        gen.generateAndWrite(GridDhtLockRequest.class);
-//        gen.generateAndWrite(GridDhtLockResponse.class);
-//
-//        gen.generateAndWrite(GridDistributedTxPrepareRequest.class);
-//        gen.generateAndWrite(GridDistributedTxPrepareResponse.class);
-//        gen.generateAndWrite(GridNearTxPrepareRequest.class);
-//        gen.generateAndWrite(GridNearTxPrepareResponse.class);
-//        gen.generateAndWrite(GridDhtTxPrepareRequest.class);
-//        gen.generateAndWrite(GridDhtTxPrepareResponse.class);
-//
-//        gen.generateAndWrite(GridDistributedTxFinishRequest.class);
-//        gen.generateAndWrite(GridDistributedTxFinishResponse.class);
-//        gen.generateAndWrite(GridNearTxFinishRequest.class);
-//        gen.generateAndWrite(GridNearTxFinishResponse.class);
-//        gen.generateAndWrite(GridDhtTxFinishRequest.class);
-//        gen.generateAndWrite(GridDhtTxFinishResponse.class);
-//
-//        gen.generateAndWrite(IncrementalSnapshotAwareMessage.class);
-
-//        gen.generateAndWrite(GridCacheTxRecoveryRequest.class);
-//        gen.generateAndWrite(GridCacheTxRecoveryResponse.class);
-
-//        gen.generateAndWrite(GridQueryCancelRequest.class);
-//        gen.generateAndWrite(GridQueryFailResponse.class);
-//        gen.generateAndWrite(GridQueryNextPageRequest.class);
-//        gen.generateAndWrite(GridQueryNextPageResponse.class);
-//        gen.generateAndWrite(GridQueryRequest.class);
-//        gen.generateAndWrite(GridCacheSqlQuery.class);
-
-//        gen.generateAndWrite(GridH2Null.class);
-//        gen.generateAndWrite(GridH2Boolean.class);
-//        gen.generateAndWrite(GridH2Byte.class);
-//        gen.generateAndWrite(GridH2Short.class);
-//        gen.generateAndWrite(GridH2Integer.class);
-//        gen.generateAndWrite(GridH2Long.class);
-//        gen.generateAndWrite(GridH2Decimal.class);
-//        gen.generateAndWrite(GridH2Double.class);
-//        gen.generateAndWrite(GridH2Float.class);
-//        gen.generateAndWrite(GridH2Time.class);
-//        gen.generateAndWrite(GridH2Date.class);
-//        gen.generateAndWrite(GridH2Timestamp.class);
-//        gen.generateAndWrite(GridH2Bytes.class);
-//        gen.generateAndWrite(GridH2String.class);
-//        gen.generateAndWrite(GridH2Array.class);
-//        gen.generateAndWrite(GridH2JavaObject.class);
-//        gen.generateAndWrite(GridH2Uuid.class);
-//        gen.generateAndWrite(GridH2Geometry.class);
-//        gen.generateAndWrite(GridH2CacheObject.class);
-//        gen.generateAndWrite(GridH2IndexRangeRequest.class);
-//        gen.generateAndWrite(GridH2IndexRangeResponse.class);
-//        gen.generateAndWrite(GridH2RowRange.class);
-//        gen.generateAndWrite(GridH2RowRangeBounds.class);
-//        gen.generateAndWrite(GridH2QueryRequest.class);
-//        gen.generateAndWrite(GridH2RowMessage.class);
-//        gen.generateAndWrite(GridCacheVersion.class);
-//        gen.generateAndWrite(GridCacheVersionEx.class);
-//        gen.generateAndWrite(GridH2DmlRequest.class);
-//        gen.generateAndWrite(GridH2DmlResponse.class);
-//        gen.generateAndWrite(GenerateEncryptionKeyRequest.class);
-//        gen.generateAndWrite(GenerateEncryptionKeyResponse.class);
+        gen.generate(GridJobCancelRequest.class);
     }
 
     /**
@@ -308,7 +227,6 @@ public class MessageCodeGenerator {
 
             boolean writeFound = false;
             boolean readFound = false;
-            boolean fieldCntFound = false;
 
             while ((line = rdr.readLine()) != null) {
                 if (!skip) {
@@ -365,9 +283,8 @@ public class MessageCodeGenerator {
      * Generates code for provided class.
      *
      * @param cls Class.
-     * @throws Exception In case of error.
      */
-    private void generate(Class<? extends Message> cls) throws Exception {
+    private void generate(Class<? extends Message> cls) throws IntrospectionException {
         assert cls != null;
 
         if (cls.isInterface())
@@ -379,6 +296,21 @@ public class MessageCodeGenerator {
         write.clear();
         read.clear();
 
+        BeanInfo beanInfo = Introspector.getBeanInfo(cls, Object.class);
+
+        System.out.println(Arrays.toString(beanInfo.getPropertyDescriptors()));
+
+        for (PropertyDescriptor pd: beanInfo.getPropertyDescriptors()) {
+            Method get = pd.getReadMethod();
+            Method set = pd.getWriteMethod();
+
+            System.out.println(pd);
+
+        }
+
+        if (true)
+            return;
+
         fields = new ArrayList<>();
 
         Field[] declaredFields = cls.getDeclaredFields();
@@ -389,8 +321,6 @@ public class MessageCodeGenerator {
             if (!isStatic(mod) && !isTransient(mod) && !field.isAnnotationPresent(GridDirectTransient.class))
                 fields.add(field);
         }
-
-        Collections.sort(fields, FIELD_CMP);
 
         int state = startState(cls);
 
