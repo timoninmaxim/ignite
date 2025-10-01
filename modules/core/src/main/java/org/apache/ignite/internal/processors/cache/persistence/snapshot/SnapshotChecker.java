@@ -70,7 +70,7 @@ public class SnapshotChecker {
         assert incIdx > 0;
 
         return CompletableFuture.supplyAsync(
-            () -> new IncrementalSnapshotVerificationTask(kctx.grid(), log, sft, incIdx).execute(),
+            () -> new IncrementalSnapshotVerification(kctx.grid(), log, sft, incIdx).execute(),
             executor
         );
     }
@@ -85,7 +85,7 @@ public class SnapshotChecker {
         if (!operationErrors.isEmpty())
             return IdleVerifyResult.builder().exceptions(operationErrors).build();
 
-        return new IncrementalSnapshotVerificationTask(kctx.grid(), log, sft, incIdx).reduce(results);
+        return new IncrementalSnapshotVerification(kctx.grid(), log, sft, incIdx).reduce(results);
     }
 
     /** */

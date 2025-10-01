@@ -55,7 +55,7 @@ import org.apache.ignite.transactions.TransactionState;
 import static org.apache.ignite.internal.managers.discovery.ConsistentIdMapper.ALL_NODES;
 
 /** */
-public class IncrementalSnapshotVerificationTask {
+public class IncrementalSnapshotVerification {
     /** */
     private final VerifyIncrementalSnapshotJob job;
 
@@ -63,7 +63,7 @@ public class IncrementalSnapshotVerificationTask {
     private final IgniteLogger log;
 
     /** */
-    public IncrementalSnapshotVerificationTask(IgniteEx ignite, IgniteLogger log, SnapshotFileTree sft, int incrementalIdx) {
+    public IncrementalSnapshotVerification(IgniteEx ignite, IgniteLogger log, SnapshotFileTree sft, int incrementalIdx) {
         job = new VerifyIncrementalSnapshotJob(ignite, log, sft, incrementalIdx);
         this.log = log;
     }
